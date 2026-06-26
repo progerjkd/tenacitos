@@ -23,7 +23,7 @@ export default function Office3D() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [interactionModal, setInteractionModal] = useState<string | null>(null);
   const [controlMode, setControlMode] = useState<'orbit' | 'fps'>('orbit');
-  const [avatarPositions, setAvatarPositions] = useState<Map<string, any>>(new Map());
+  const [avatarPositions, setAvatarPositions] = useState<Map<string, Vector3>>(new Map());
   
   // Mock data - TODO: Replace with real API data
   const [agentStates] = useState<Record<string, AgentState>>({
@@ -59,7 +59,7 @@ export default function Office3D() {
     setInteractionModal(null);
   };
 
-  const handleAvatarPositionUpdate = (id: string, position: any) => {
+  const handleAvatarPositionUpdate = (id: string, position: Vector3) => {
     setAvatarPositions(prev => new Map(prev).set(id, position));
   };
 

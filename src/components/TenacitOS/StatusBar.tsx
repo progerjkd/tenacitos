@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Cpu, HardDrive, MemoryStick, Shield, ShieldCheck, Clock } from "lucide-react";
 
 interface SystemStats {
@@ -52,7 +52,7 @@ export function StatusBar() {
   const diskColor = diskPercent < 60 ? "var(--positive)" : diskPercent < 85 ? "var(--warning)" : "var(--negative)";
 
   // StatusMetric component
-  const StatusMetric = ({ icon: Icon, label, value, barPercent, color }: any) => (
+  const StatusMetric = ({ icon: Icon, label, value, barPercent, color }: { icon: React.ElementType; label: string; value: string; barPercent: number; color: string }) => (
     <div className="flex items-center gap-1.5" style={{ height: "24px" }}>
       <Icon style={{ width: "14px", height: "14px", color: "var(--text-muted)" }} />
       <span

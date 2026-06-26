@@ -11,7 +11,7 @@ interface FirstPersonControlsProps {
 
 export default function FirstPersonControls({ moveSpeed = 5 }: FirstPersonControlsProps) {
   const { camera } = useThree();
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<InstanceType<typeof PointerLockControls>>(null);
   
   const moveState = useRef({
     forward: false,

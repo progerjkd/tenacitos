@@ -6,27 +6,14 @@ export function useAvatarModel(agentId: string) {
   const modelPath = `/models/${agentId}.glb`;
 
   useEffect(() => {
-    // Check if model file exists
     fetch(modelPath, { method: 'HEAD' })
-      .then(response => {
-        setModelExists(response.ok);
-      })
-      .catch(() => {
-        setModelExists(false);
-      });
+      .then(response => { setModelExists(response.ok); })
+      .catch(() => { setModelExists(false); });
   }, [modelPath]);
 
-  // Only try to load if we know the model exists
-  let model = null;
-  if (modelExists === true) {
-    try {
-      const gltf = useGLTF(modelPath);
-      model = gltf.scene;
-    } catch (error) {
-      // Failed to load, use fallback
-      model = null;
-    }
-  }
+  // Always call useGLTF unconditionally (rules of hooks)
+  const gltf = useGLTF(modelPath);
+  const model = modelExists === true ? gltf.scene : null;
 
   return { model, loading: modelExists === null };
 }
