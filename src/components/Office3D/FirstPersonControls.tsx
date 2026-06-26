@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, type ElementRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { PointerLockControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -11,7 +11,7 @@ interface FirstPersonControlsProps {
 
 export default function FirstPersonControls({ moveSpeed = 5 }: FirstPersonControlsProps) {
   const { camera } = useThree();
-  const controlsRef = useRef<{ isLocked: boolean }>(null);
+  const controlsRef = useRef<ElementRef<typeof PointerLockControls>>(null);
   
   const moveState = useRef({
     forward: false,
