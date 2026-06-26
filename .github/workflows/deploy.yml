@@ -78,6 +78,7 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: openclaw.neuralops.ca
+          port: 2022
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
