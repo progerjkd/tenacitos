@@ -15,10 +15,13 @@ const eslintConfig = defineConfig([
   ]),
   {
     rules: {
-      // React Compiler rules flag many valid patterns across this codebase
-      // (inline components, setState in effects, variable hoisting). Disable
-      // until the codebase is fully compiler-compatible.
+      // New react-hooks v5 rules flag many valid patterns across this codebase
+      // (inline components, setState in effects, immutability). Disable until
+      // the codebase is progressively updated to satisfy these constraints.
       "react-compiler/react-compiler": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/static-components": "off",
+      "react-hooks/immutability": "off",
     },
   },
 ]);
