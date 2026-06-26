@@ -32,7 +32,7 @@ const NODE_H = 72;
 const H_GAP = 40;
 const V_GAP = 80;
 
-export function AgentOrgChart({ agents }: AgentOrganigramaProps) {
+export function AgentOrgChart({ agents }: AgentOrgChartProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   if (agents.length === 0) {
