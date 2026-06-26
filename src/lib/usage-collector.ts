@@ -53,7 +53,7 @@ export async function getOpenClawStatus(): Promise<unknown> {
  */
 export function extractSessionData(status: unknown): SessionData[] {
   const sessions: SessionData[] = [];
-  const s = status as { sessions?: { byAgent?: Array<{ agentId: string; recent?: Array<{ key: string; sessionId: string; model?: string; inputTokens?: number; outputTokens?: number; cost?: number }> }> } };
+  const s = status as { sessions?: { byAgent?: Array<{ agentId: string; recent?: Array<{ key: string; sessionId: string; model?: string; inputTokens?: number; outputTokens?: number; totalTokens?: number; cost?: number; updatedAt?: string; percentUsed?: number }> }> } };
 
   if (!s.sessions?.byAgent) {
     return sessions;
