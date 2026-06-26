@@ -4,6 +4,19 @@ import { join } from "path";
 
 export const dynamic = "force-dynamic";
 
+interface RawAgent {
+  id: string;
+  name?: string;
+  workspace: string;
+  model?: { primary?: string };
+  subagents?: { allowAgents?: string[] };
+}
+
+interface AgentSession {
+  id: string;
+  startedAt: string;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -16,7 +29,7 @@ export async function GET(
     const config = JSON.parse(readFileSync(configPath, "utf-8"));
 
     // Find agent
-    const agent = config.agents.list.find((a: any) => a.id === id);
+    const agent = config.agents.list.find((a: RawAgent) => a.id === id) as RawAgent | undefined;
     if (!agent) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
@@ -47,7 +60,7 @@ export async function GET(
 
     // Get session info (from OpenClaw API if available)
     // For now, we return mock data
-    const sessions: Array<any> = [];
+    const sessions: AgentSession[] = [];
 
     // Get telegram account info
     const telegramAccount = config.channels?.telegram?.accounts?.[id];

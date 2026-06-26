@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readFileSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { join } from "path";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +25,15 @@ interface Agent {
   activeSessions: number;
 }
 
+interface RawAgent {
+  id: string;
+  name?: string;
+  workspace: string;
+  model?: { primary?: string };
+  subagents?: { allowAgents?: string[] };
+  ui?: { emoji?: string; color?: string };
+}
+
 // Fallback config used when an agent doesn't define its own ui config in openclaw.json.
 // The main agent reads name/emoji from env vars; all others fall back to generic defaults.
 // Override via each agent's openclaw.json → ui.emoji / ui.color / name fields.
@@ -39,8 +48,7 @@ const DEFAULT_AGENT_CONFIG: Record<string, { emoji: string; color: string; name?
 /**
  * Get agent display info (emoji, color, name) from openclaw.json or defaults
  */
-function getAgentDisplayInfo(agentId: string, agentConfig: any): { emoji: string; color: string; name: string } {
-  // First try to get from agent's own config in openclaw.json
+function getAgentDisplayInfo(agentId: string, agentConfig: RawAgent | null): { emoji: string; color: string; name: string } {
   const configEmoji = agentConfig?.ui?.emoji;
   const configColor = agentConfig?.ui?.color;
   const configName = agentConfig?.name;
@@ -62,7 +70,7 @@ export async function GET() {
     const config = JSON.parse(readFileSync(configPath, "utf-8"));
 
     // Get agents from config
-    const agents: Agent[] = config.agents.list.map((agent: any) => {
+    const agents: Agent[] = config.agents.list.map((agent: RawAgent) => {
       const agentInfo = getAgentDisplayInfo(agent.id, agent);
 
       // Get telegram account info
@@ -78,7 +86,7 @@ export async function GET() {
       try {
         const today = new Date().toISOString().split("T")[0];
         const memoryFile = join(memoryPath, `${today}.md`);
-        const stat = require("fs").statSync(memoryFile);
+        const stat = statSync(memoryFile);
         lastActivity = stat.mtime.toISOString();
         // Consider online if activity within last 5 minutes
         status =
@@ -94,7 +102,7 @@ export async function GET() {
       const allowAgentsDetails = allowAgents.map((subagentId: string) => {
         // Find subagent in config
         const subagentConfig = config.agents.list.find(
-          (a: any) => a.id === subagentId
+          (a: RawAgent) => a.id === subagentId
         );
         if (subagentConfig) {
           const subagentInfo = getAgentDisplayInfo(subagentId, subagentConfig);
