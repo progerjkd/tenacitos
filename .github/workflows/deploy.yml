@@ -1,0 +1,89 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/${{ github.repository_owner }}/tenacitos
+
+jobs:
+  # ── Lint + type-check ───────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  # ── Build Docker image ──────────────────────────────────────────────────────
+  build:
+    name: Build image
+    runs-on: ubuntu-latest
+    needs: lint
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Deploy to spot instance ─────────────────────────────────────────────────
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == github.repository_owner
+    environment: production
+    steps:
+      - name: Deploy to openclaw.neuralops.ca
+        uses: appleboy/ssh-action@v1
+        with:
+          host: openclaw.neuralops.ca
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            echo "Pulling ghcr.io/progerjkd/tenacitos:latest..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u progerjkd --password-stdin
+            docker pull ghcr.io/progerjkd/tenacitos:latest
+            docker compose -f /opt/openclaw/docker-compose.yml up -d --no-deps tenacitos
+            echo "Deploy complete — $(date)"

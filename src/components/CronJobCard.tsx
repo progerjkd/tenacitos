@@ -118,7 +118,7 @@ export function CronJobCard({ job, onToggle, onDelete, onRun }: CronJobCardProps
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
     const date = new Date(dateStr);
-    return date.toLocaleString("es-ES", {
+    return date.toLocaleString("en-CA", {
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -148,7 +148,7 @@ export function CronJobCard({ job, onToggle, onDelete, onRun }: CronJobCardProps
 
   const formatHistoryDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleString("es-ES", {
+    return new Date(dateStr).toLocaleString("en-CA", {
       month: "short",
       day: "numeric",
       hour: "2-digit",
