@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // React Compiler rules flag many valid patterns across this codebase
+      // (inline components, setState in effects, variable hoisting). Disable
+      // until the codebase is fully compiler-compatible.
+      "react-compiler/react-compiler": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;
