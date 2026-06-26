@@ -52,7 +52,7 @@ export function StatusBar() {
   const diskColor = diskPercent < 60 ? "var(--positive)" : diskPercent < 85 ? "var(--warning)" : "var(--negative)";
 
   // StatusMetric component
-  const StatusMetric = ({ icon: Icon, label, value, barPercent, color }: { icon: React.ElementType; label: string; value: string; barPercent: number; color: string }) => (
+  const StatusMetric = ({ icon: Icon, label, value, barPercent, color }: { icon: React.ComponentType<{ style?: React.CSSProperties }>; label: string; value: string; barPercent: number; color: string }) => (
     <div className="flex items-center gap-1.5" style={{ height: "24px" }}>
       <Icon style={{ width: "14px", height: "14px", color: "var(--text-muted)" }} />
       <span
