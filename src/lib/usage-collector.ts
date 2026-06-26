@@ -71,7 +71,7 @@ export function extractSessionData(status: unknown): SessionData[] {
         inputTokens: session.inputTokens || 0,
         outputTokens: session.outputTokens || 0,
         totalTokens: session.totalTokens || 0,
-        updatedAt: session.updatedAt,
+        updatedAt: session.updatedAt ?? 0,
         percentUsed: session.percentUsed || 0,
       });
     }
