@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cpu, HardDrive, MemoryStick, Activity, Network, Server, ShieldCheck, RotateCw, Wifi, Monitor, Play, Square, X, Loader2, Terminal, ArrowDown, ArrowUp } from "lucide-react";
+import { Cpu, HardDrive, MemoryStick, Network, Server, ShieldCheck, RotateCw, Wifi, Monitor, Play, Square, X, Loader2, Terminal, ArrowDown, ArrowUp } from "lucide-react";
 
 interface SystemdService {
   name: string;

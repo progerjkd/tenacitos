@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readFileSync, statSync, readdirSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { join } from "path";
 
 export const dynamic = "force-dynamic";
@@ -175,7 +175,7 @@ function getAgentStatusFromFiles(
     } else {
       return { isActive: false, currentTask: "SLEEPING: zzZ...", lastSeen };
     }
-  } catch (error) {
+  } catch {
     // No memory file or error reading
     return { isActive: false, currentTask: "SLEEPING: zzZ...", lastSeen: 0 };
   }

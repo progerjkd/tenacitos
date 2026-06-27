@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { DollarSign, TrendingUp, TrendingDown, AlertTriangle, Calendar, PieChart } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { DollarSign, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, PieChart as RePieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 interface CostData {
@@ -30,13 +30,7 @@ export default function CostsPage() {
   const [loading, setLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<"7d" | "30d" | "90d">("30d");
 
-  useEffect(() => {
-    fetchCostData();
-    const interval = setInterval(fetchCostData, 60000); // Update every minute
-    return () => clearInterval(interval);
-  }, [timeframe]);
-
-  const fetchCostData = async () => {
+  const fetchCostData = useCallback(async () => {
     try {
       const res = await fetch(`/api/costs?timeframe=${timeframe}`);
       if (res.ok) {
@@ -48,7 +42,13 @@ export default function CostsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [timeframe]);
+
+  useEffect(() => {
+    fetchCostData();
+    const interval = setInterval(fetchCostData, 60000);
+    return () => clearInterval(interval);
+  }, [fetchCostData]);
 
   if (loading) {
     return (

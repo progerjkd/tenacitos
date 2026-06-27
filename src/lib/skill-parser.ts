@@ -218,19 +218,6 @@ function buildAgentSkillMap(): Map<string, string[]> {
 }
 
 /**
- * Load configured skills from config file
- */
-function loadConfiguredSkills(): ConfiguredSkill[] {
-  try {
-    const content = fs.readFileSync(CONFIG_PATH, 'utf-8');
-    const config: SkillsConfig = JSON.parse(content);
-    return config.skills || [];
-  } catch {
-    return [];
-  }
-}
-
-/**
  * Scan only configured skills and return parsed skills
  */
 export function scanAllSkills(): SkillInfo[] {

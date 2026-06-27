@@ -23,7 +23,6 @@ import {
   Eye,
   Code2,
   RefreshCw,
-  MoreVertical,
 } from "lucide-react";
 import { FilePreview } from "./FilePreview";
 
@@ -151,6 +150,7 @@ function EditorModal({ workspace, filePath, fileName, onClose }: EditorModalProp
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
 
   return (
@@ -286,7 +286,6 @@ export function FileBrowser({ workspace, path, onNavigate, viewMode = "list" }: 
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFileName, setNewFileName] = useState("");
   const [showNewFile, setShowNewFile] = useState(false);
-  const [actionMenu, setActionMenu] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadItems = useCallback(() => {
@@ -593,7 +592,6 @@ export function FileBrowser({ workspace, path, onNavigate, viewMode = "list" }: 
             {items.map((item) => {
               const Icon = getFileIcon(item.name, item.type);
               const iconColor = getFileColor(item.name, item.type);
-              const filePath = path ? `${path}/${item.name}` : item.name;
 
               return (
                 <div
@@ -601,7 +599,7 @@ export function FileBrowser({ workspace, path, onNavigate, viewMode = "list" }: 
                   className="flex md:grid md:grid-cols-12 gap-2 md:gap-4 px-3 md:px-6 py-2.5 md:py-3 cursor-pointer transition-colors hover:opacity-80 group"
                   style={{ borderBottom: "1px solid var(--border)", position: "relative" }}
                   onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "var(--background)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; setActionMenu(null); }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
                 >
                   {/* Name */}
                   <div

@@ -9,7 +9,6 @@ import {
   Shield,
   Users,
   Activity,
-  ExternalLink,
   GitBranch,
   LayoutGrid,
 } from "lucide-react";

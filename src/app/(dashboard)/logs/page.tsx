@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Terminal, Play, Square, Trash2, Download, Circle, Server } from "lucide-react";
+import { Terminal, Play, Square, Trash2, Download, Circle } from "lucide-react";
 
 interface LogLine {
   line: string;

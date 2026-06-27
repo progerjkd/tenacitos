@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Sora, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -22,7 +22,6 @@ export const metadata: Metadata = {
   title: "Mission Control - OpenClaw",
   description: "Your OpenClaw agent dashboard",
   manifest: "/manifest.json",
-  themeColor: "#1a1a2e",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -30,6 +29,10 @@ export const metadata: Metadata = {
   icons: {
     apple: "/apple-touch-icon.png",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1a1a2e",
 };
 
 export default function RootLayout({

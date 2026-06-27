@@ -167,6 +167,7 @@ export function OfficeCanvas({ agents }: OfficeCanvasProps) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agents, hoveredAgent, imagesLoaded, bgImage, spriteImages]);
 
   const render = (ctx: CanvasRenderingContext2D, time: number) => {

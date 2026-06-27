@@ -169,7 +169,7 @@ export async function POST(request: Request) {
     }
     
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Action failed' }, { status: 500 });
   }
 }
