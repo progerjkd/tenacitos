@@ -179,6 +179,7 @@ export default function ActivityPage() {
   useEffect(() => {
     setOffset(0);
     fetchActivities(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sort, selectedTypes, filterStatus, startDate, endDate]);
 
   useEffect(() => {
