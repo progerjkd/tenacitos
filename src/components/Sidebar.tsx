@@ -29,6 +29,7 @@ import {
   SquareTerminal,
   History,
   Hash,
+  Kanban,
 } from "lucide-react";
 import { getAgentDisplayName } from "@/config/branding";
 
@@ -46,6 +47,7 @@ const navItems = [
   { href: "/memory", label: "Memory", icon: Brain },
   { href: "/files", label: "Files", icon: FolderOpen },
   { href: "/channels", label: "Slack", icon: Hash },
+  { href: "/jira", label: "Jira Board", icon: Kanban },
   { href: "/cron", label: "Cron Jobs", icon: Timer },
   { href: "/sessions", label: "Sessions", icon: History },
   { href: "/search", label: "Search", icon: Search },
