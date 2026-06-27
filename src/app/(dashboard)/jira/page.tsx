@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Kanban, RefreshCw, ExternalLink, AlertCircle } from "lucide-react";
+import { Kanban, RefreshCw, ExternalLink, AlertCircle, Send } from "lucide-react";
 import { JIRA_COLUMNS, priorityIcon, type JiraIssue, type JiraStatus } from "@/lib/jira";
 
 const COLUMN_COLORS: Record<JiraStatus, string> = {
@@ -18,8 +18,10 @@ function IssueCard({
   onStarted: (key: string) => void;
 }) {
   const [starting, setStarting] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const isStartable = issue.status === "To Do";
+  const isDispatchable = issue.status !== "Done";
 
   const handleStart = async () => {
     setStarting(true);
@@ -41,6 +43,25 @@ function IssueCard({
     } finally {
       setStarting(false);
       setTimeout(() => setFeedback(null), 4000);
+    }
+  };
+
+  const handleDispatch = async () => {
+    setDispatching(true);
+    const message = `Work on ${issue.key}: ${issue.summary}\n\nJira: ${issue.url}\n\nCurrent status: ${issue.status}. Please pick this up, implement the changes needed, and move the issue to Done when complete.`;
+    try {
+      const res = await fetch("/api/agents/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentSlug: "main", message }),
+      });
+      const data = await res.json();
+      setFeedback(data.ok ? "Dispatched to Max ✓" : `Error: ${data.error}`);
+    } catch {
+      setFeedback("Dispatch failed");
+    } finally {
+      setDispatching(false);
+      setTimeout(() => setFeedback(null), 5000);
     }
   };
 
@@ -100,21 +121,40 @@ function IssueCard({
             {feedback}
           </span>
         )}
-        {isStartable && !feedback && (
-          <button
-            onClick={handleStart}
-            disabled={starting}
-            className="ml-auto text-xs px-2 py-0.5 rounded transition-all"
-            style={{
-              border: "1px solid var(--border)",
-              color: "var(--text-secondary)",
-              backgroundColor: "transparent",
-              cursor: starting ? "wait" : "pointer",
-            }}
-          >
-            {starting ? "…" : "▶ Start"}
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          {isStartable && !feedback && (
+            <button
+              onClick={handleStart}
+              disabled={starting}
+              className="text-xs px-2 py-0.5 rounded transition-all"
+              style={{
+                border: "1px solid var(--border)",
+                color: "var(--text-secondary)",
+                backgroundColor: "transparent",
+                cursor: starting ? "wait" : "pointer",
+              }}
+            >
+              {starting ? "…" : "▶ Start"}
+            </button>
+          )}
+          {isDispatchable && !feedback && (
+            <button
+              onClick={handleDispatch}
+              disabled={dispatching}
+              title="Send to Max"
+              className="flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-all"
+              style={{
+                border: "1px solid var(--border)",
+                color: "var(--accent)",
+                backgroundColor: "color-mix(in srgb, var(--accent) 8%, transparent)",
+                cursor: dispatching ? "wait" : "pointer",
+              }}
+            >
+              <Send className="w-3 h-3" />
+              {dispatching ? "…" : "Max"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -236,7 +276,7 @@ export default function JiraPage() {
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={`${process.env.NEXT_PUBLIC_JIRA_BASE_URL ?? "https://neuralops.atlassian.net"}/jira/software/projects/NEURALOPS/boards`}
+            href="https://neuralops.atlassian.net/jira/software/projects/NEURALOPS/boards"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-sm"
