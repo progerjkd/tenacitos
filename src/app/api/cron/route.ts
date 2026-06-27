@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { callGateway, GatewayError, type CronListResult, type CronJob } from "@/lib/gateway";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +52,7 @@ export async function GET() {
 }
 
 // PUT: enable/disable — not yet supported by gateway API
-export async function PUT(_request: NextRequest) {
+export async function PUT() {
   return NextResponse.json(
     { error: "Toggle not supported via gateway" },
     { status: 501 },
@@ -60,7 +60,7 @@ export async function PUT(_request: NextRequest) {
 }
 
 // DELETE: not yet supported by gateway API
-export async function DELETE(_request: NextRequest) {
+export async function DELETE() {
   return NextResponse.json(
     { error: "Delete not supported via gateway" },
     { status: 501 },

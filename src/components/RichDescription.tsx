@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-const IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|gif)$/i;
 // Match absolute paths to image files
 const IMAGE_PATH_RE = /((?:\/root\/\.openclaw|\/[\w/.-]+\/\.openclaw)\/(?:workspace|media)\/\S+?\.(png|jpe?g|webp|gif))/gi;
 // Match MEDIA:/path/to/file pattern
@@ -17,6 +16,7 @@ function ImageInline({ src }: { src: string }) {
 
   return (
     <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
         alt=""
@@ -44,6 +44,7 @@ function ImageInline({ src }: { src: string }) {
             cursor: "zoom-out",
           }}
         >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={src}
             alt=""

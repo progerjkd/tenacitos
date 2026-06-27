@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { StickyNote, Save, Trash2 } from "lucide-react";
+import { StickyNote, Trash2 } from "lucide-react";
 
 const STORAGE_KEY = "tenacitas-notepad";
 
@@ -31,6 +31,7 @@ export function Notepad() {
       save();
     }, 2000);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
   const save = () => {

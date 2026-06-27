@@ -70,6 +70,7 @@ export default function MovingAvatar({
   // Notificar posición inicial
   useEffect(() => {
     onPositionUpdate(agent.id, initialPos.clone());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Verificar si una posición está libre (sin colisiones)
@@ -143,6 +144,7 @@ export default function MovingAvatar({
       clearTimeout(timeout);
       clearInterval(interval);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.status]);
 
   // Mover suavemente hacia el objetivo

@@ -10,13 +10,6 @@ const WORKSPACE_MAP: Record<string, string> = {
   'mission-control': path.join(OPENCLAW_DIR, 'workspace', 'mission-control'),
 };
 
-function resolvePath(workspace: string, filePath: string): string | null {
-  const base = WORKSPACE_MAP[workspace];
-  if (!base) return null;
-  const full = path.resolve(base, filePath);
-  if (!full.startsWith(base)) return null; // path traversal check
-  return full;
-}
 
 export async function POST(request: NextRequest) {
   try {
