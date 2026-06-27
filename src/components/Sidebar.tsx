@@ -21,7 +21,6 @@ import {
   X,
   Users,
   Gamepad2,
-  GitBranch,
   Workflow,
   Zap,
   Server,

@@ -1,6 +1,6 @@
 'use client';
 
-import { Box, Sphere, Cylinder, Cone } from '@react-three/drei';
+import { Box, Sphere, Cylinder } from '@react-three/drei';
 import type { AgentConfig } from './agentsConfig';
 
 interface ProceduralAvatarProps {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Cpu, HardDrive, MemoryStick, Shield, ShieldCheck, Clock } from "lucide-react";
+import { Cpu, HardDrive, MemoryStick, ShieldCheck, Clock } from "lucide-react";
 
 interface SystemStats {
   cpu: number;

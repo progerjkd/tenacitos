@@ -54,7 +54,7 @@ export async function GET(
         })
         .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, 7);
-    } catch (e) {
+    } catch {
       // Memory directory doesn't exist
     }
 

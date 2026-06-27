@@ -298,6 +298,7 @@ export function FilePreview({ workspace, path, name, onClose }: FilePreviewProps
 
           {!loading && !error && isImage && (
             <div className="flex items-center justify-center h-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`/api/browse?workspace=${encodeURIComponent(workspace)}&path=${encodeURIComponent(path)}&raw=true`}
                 alt={name}

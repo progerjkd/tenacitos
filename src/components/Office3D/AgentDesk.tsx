@@ -5,7 +5,6 @@ import { useFrame } from '@react-three/fiber';
 import { Text, Box } from '@react-three/drei';
 import type { Mesh } from 'three';
 import type { AgentConfig, AgentState } from './agentsConfig';
-import VoxelAvatar from './VoxelAvatar';
 import VoxelChair from './VoxelChair';
 import VoxelKeyboard from './VoxelKeyboard';
 import VoxelMacMini from './VoxelMacMini';

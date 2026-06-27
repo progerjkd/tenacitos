@@ -23,7 +23,6 @@ export default function FirstPersonControls({ moveSpeed = 5 }: FirstPersonContro
   });
 
   const velocity = useRef(new THREE.Vector3());
-  const direction = useRef(new THREE.Vector3());
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
