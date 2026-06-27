@@ -28,6 +28,7 @@ import {
   GitFork,
   SquareTerminal,
   History,
+  Hash,
 } from "lucide-react";
 import { getAgentDisplayName } from "@/config/branding";
 
@@ -44,6 +45,7 @@ const navItems = [
   { href: "/activity", label: "Activity", icon: Activity },
   { href: "/memory", label: "Memory", icon: Brain },
   { href: "/files", label: "Files", icon: FolderOpen },
+  { href: "/channels", label: "Slack", icon: Hash },
   { href: "/cron", label: "Cron Jobs", icon: Timer },
   { href: "/sessions", label: "Sessions", icon: History },
   { href: "/search", label: "Search", icon: Search },
