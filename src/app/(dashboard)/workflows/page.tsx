@@ -15,6 +15,24 @@ interface Workflow {
 
 const WORKFLOWS: Workflow[] = [
   {
+    id: "jira-auto-dispatch",
+    emoji: "🎯",
+    name: "Jira Auto-Dispatch",
+    description: "Monitors the NEURALOPS kanban board for To Do items and automatically dispatches them to OpenClaw agents, transitions them to In Progress, and sends Slack + in-app notifications.",
+    schedule: "On webhook event (Jira Automation) or manual via POST /api/jira/auto-dispatch",
+    trigger: "demand",
+    status: "active",
+    steps: [
+      "Jira Automation triggers /api/jira/webhook when an issue is created or moved to To Do",
+      "Webhook fetches the full issue from the Jira API and validates status",
+      "Calls /api/jira/auto-dispatch to dispatch the issue to the main OpenClaw agent",
+      "Transitions the issue to In Progress in Jira",
+      "Posts a comment on the Jira issue confirming the dispatch",
+      "Sends a Slack notification to #dev with issue title and link",
+      "Creates a TenacitOS in-app notification",
+    ],
+  },
+  {
     id: "social-radar",
     emoji: "🔭",
     name: "Social Radar",
