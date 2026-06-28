@@ -1,43 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
 import { randomUUID } from 'crypto';
+import {
+  loadNotifications,
+  saveNotifications,
+  type Notification,
+} from '@/lib/notifications';
 
-const DATA_PATH = path.join(process.cwd(), 'data', 'notifications.json');
-
-export interface Notification {
-  id: string;
-  timestamp: string;
-  title: string;
-  message: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  read: boolean;
-  link?: string;
-  metadata?: Record<string, unknown>;
-}
+export type { Notification };
 
 interface NotificationsResponse {
   notifications: Notification[];
   unreadCount: number;
-}
-
-async function loadNotifications(): Promise<Notification[]> {
-  try {
-    const data = await fs.readFile(DATA_PATH, 'utf-8');
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
-}
-
-async function saveNotifications(notifications: Notification[]): Promise<void> {
-  const dir = path.dirname(DATA_PATH);
-  try {
-    await fs.access(dir);
-  } catch {
-    await fs.mkdir(dir, { recursive: true });
-  }
-  await fs.writeFile(DATA_PATH, JSON.stringify(notifications, null, 2));
 }
 
 export async function GET(request: NextRequest) {

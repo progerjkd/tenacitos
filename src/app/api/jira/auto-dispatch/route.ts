@@ -21,11 +21,11 @@ import {
 } from "@/lib/jira";
 import { sendSlackMessage } from "@/lib/slack";
 import { callGateway } from "@/lib/gateway";
+import { createNotification } from "@/lib/notifications";
 
 const PROJECT = "NEURALOPS";
 const DEFAULT_AGENT = "main";
 const NOTIFY_CHANNEL = "#dev";
-const NOTIFICATIONS_API = "/api/notifications";
 
 interface DispatchResult {
   key: string;
@@ -51,23 +51,6 @@ async function dispatchToAgent(issue: JiraIssue, agentSlug: string): Promise<boo
   return true;
 }
 
-async function createInternalNotification(
-  baseUrl: string,
-  issue: JiraIssue,
-): Promise<void> {
-  await fetch(`${baseUrl}${NOTIFICATIONS_API}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: `Agent dispatched: ${issue.key}`,
-      message: `${issue.summary}`,
-      type: "info",
-      link: `/jira`,
-      metadata: { issueKey: issue.key, issueUrl: issue.url },
-    }),
-  });
-}
-
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
@@ -79,8 +62,6 @@ export async function POST(request: NextRequest) {
 
   const agentSlug = body.agentSlug ?? DEFAULT_AGENT;
   const dryRun = body.dryRun ?? false;
-
-  const baseUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
 
   let issues: JiraIssue[];
   try {
@@ -157,7 +138,13 @@ export async function POST(request: NextRequest) {
       result.slackNotified = slackResult.ok;
 
       // 5. Create TenacitOS notification
-      await createInternalNotification(baseUrl, issue).catch(() => null);
+      await createNotification({
+        title: `Agent dispatched: ${issue.key}`,
+        message: issue.summary,
+        type: "info",
+        link: `/jira`,
+        metadata: { issueKey: issue.key, issueUrl: issue.url },
+      }).catch(() => null);
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err);
     }
