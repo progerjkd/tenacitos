@@ -41,6 +41,9 @@ export async function callGateway<T>(method: string, params?: unknown): Promise<
     const ws = new WebSocket(gatewayWsUrl(), {
       headers: {
         Authorization: `Bearer ${gatewayToken}`,
+        // Browsers always send Origin; ws library doesn't. Gateway requires an
+        // allowed origin for operator connections, so we mimic the Control UI.
+        Origin: process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3140",
       },
     });
 
