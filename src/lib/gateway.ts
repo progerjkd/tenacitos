@@ -90,7 +90,7 @@ export async function callGateway<T>(method: string, params?: unknown): Promise<
           minProtocol: 4,
           maxProtocol: 4,
           client: {
-            id: "tenacitos",
+            id: "openclaw-control-ui",
             displayName: "NeuralOps Mission Control",
             version: "1.0.0",
             platform: "server",
