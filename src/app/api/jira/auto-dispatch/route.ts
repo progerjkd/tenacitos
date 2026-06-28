@@ -46,7 +46,7 @@ async function dispatchToAgent(issue: JiraIssue, agentSlug: string): Promise<boo
     `Please implement the changes described in this ticket, then move the issue to Done when complete.`,
   ].join("\n");
 
-  const sessionKey = `agent:${agentSlug}:${issue.key.toLowerCase()}`;
+  const sessionKey = `agent:${agentSlug}:main`;
   await callGateway("sessions.send", { key: sessionKey, message, timeoutMs: 0 });
   return true;
 }
