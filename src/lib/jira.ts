@@ -132,3 +132,61 @@ export function priorityIcon(priority: string): string {
 export function jiraBoardUrl(project: string): string {
   return `${jiraBase()}/jira/software/projects/${project}/boards`;
 }
+
+export async function getSingleIssue(issueKey: string): Promise<JiraIssue | null> {
+  const res = await fetch(
+    `${jiraBase()}/rest/api/3/issue/${issueKey}?fields=summary,status,priority,assignee,issuetype`,
+    {
+      headers: { Authorization: jiraAuthHeader(), Accept: "application/json" },
+      cache: "no-store",
+    },
+  );
+  if (!res.ok) return null;
+  const issue = (await res.json()) as {
+    id: string;
+    key: string;
+    fields: {
+      summary: string;
+      status: { name: string };
+      priority: { name: string };
+      issuetype: { name: string };
+      assignee: { displayName: string; avatarUrls: { "24x24": string } } | null;
+    };
+  };
+  return {
+    id: issue.id,
+    key: issue.key,
+    summary: issue.fields.summary,
+    status: issue.fields.status.name,
+    priority: issue.fields.priority?.name ?? "Medium",
+    issuetype: issue.fields.issuetype?.name ?? "Task",
+    assignee: issue.fields.assignee
+      ? {
+          displayName: issue.fields.assignee.displayName,
+          avatarUrl: issue.fields.assignee.avatarUrls["24x24"],
+        }
+      : null,
+    url: `${jiraBase()}/browse/${issue.key}`,
+  };
+}
+
+export async function addJiraComment(issueKey: string, body: string): Promise<void> {
+  const res = await fetch(`${jiraBase()}/rest/api/3/issue/${issueKey}/comment`, {
+    method: "POST",
+    headers: {
+      Authorization: jiraAuthHeader(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      body: {
+        type: "doc",
+        version: 1,
+        content: [{ type: "paragraph", content: [{ type: "text", text: body }] }],
+      },
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`Jira comment failed: ${res.status}`);
+  }
+}

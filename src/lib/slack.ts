@@ -106,3 +106,26 @@ export async function getUserInfo(userId: string): Promise<SlackUserInfo | null>
     isBot: data.user.is_bot,
   };
 }
+
+export async function sendSlackMessage(
+  channelName: string,
+  text: string,
+  blocks?: unknown[],
+): Promise<{ ok: boolean; ts?: string; error?: string }> {
+  const channelId = await resolveChannelId(channelName);
+  if (!channelId) return { ok: false, error: `Channel not found: ${channelName}` };
+
+  const body: Record<string, unknown> = { channel: channelId, text };
+  if (blocks) body.blocks = blocks;
+
+  const res = await fetch(`${SLACK_API}/chat.postMessage`, {
+    method: "POST",
+    headers: {
+      Authorization: slackAuthHeader(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json()) as { ok: boolean; ts?: string; error?: string };
+  return data;
+}
