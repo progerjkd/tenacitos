@@ -114,6 +114,6 @@ export async function GET() {
     return NextResponse.json({ workspaces });
   } catch (error) {
     console.error('Failed to list workspaces:', error);
-    return NextResponse.json({ workspaces: [] }, { status: 500 });
+    return NextResponse.json({ workspaces: [] });
   }
 }

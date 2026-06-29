@@ -116,7 +116,7 @@ export default function Office3D() {
             <AgentDesk
               key={agent.id}
               agent={agent}
-              state={agentStates[agent.id]}
+              state={agentStates[agent.id] ?? { id: agent.id, status: 'idle' as const }}
               onClick={() => handleDeskClick(agent.id)}
               isSelected={selectedAgent === agent.id}
             />
@@ -127,7 +127,7 @@ export default function Office3D() {
             <MovingAvatar
               key={`avatar-${agent.id}`}
               agent={agent}
-              state={agentStates[agent.id]}
+              state={agentStates[agent.id] ?? { id: agent.id, status: 'idle' as const }}
               officeBounds={{ minX: -8, maxX: 8, minZ: -7, maxZ: 7 }}
               obstacles={obstacles}
               otherAvatarPositions={avatarPositions}
