@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import os from "os";
+import { parseDfDisks, parseFindmntDisks } from "@/lib/system-disks";
+import type { DiskEntry } from "@/lib/system-disks";
 
 const execAsync = promisify(exec);
 
@@ -81,42 +83,23 @@ export async function GET() {
     const usedMem = totalMem - freeMem;
 
     // ── Disk (all real block devices) ─────────────────────────────────────────
-    interface DiskEntry { mountpoint: string; total: number; used: number; free: number; percent: number; }
     const disks: DiskEntry[] = [];
     let diskTotal = 0;
     let diskUsed = 0;
     let diskFree = 0;
     let diskPercent = 0;
     try {
-      // Use POSIX format (-P) with KB blocks (-BK) for precision and broad compatibility
       const { stdout } = await execAsync(
-        "df -BK -P 2>/dev/null | tail -n +2"
+        "findmnt -D -o SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL,USE% 2>/dev/null"
       );
-      const EXCLUDE_MOUNT = /^(\/dev\/|\/sys\/|\/proc\/|\/run\/|\/snap\/)/;
-      for (const line of stdout.trim().split('\n').filter(Boolean)) {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length < 6) continue;
-        const [device, totalK, usedK, availK, pctStr, mountpoint] = parts;
-        // Only include real block devices (EBS, local disks)
-        if (!device.startsWith('/dev/')) continue;
-        if (EXCLUDE_MOUNT.test(mountpoint)) continue;
-        const totalGB = parseFloat((parseInt(totalK) / 1024 / 1024).toFixed(1));
-        if (totalGB < 0.1) continue;
-        const usedGB = parseFloat((parseInt(usedK) / 1024 / 1024).toFixed(1));
-        const freeGB = parseFloat((parseInt(availK) / 1024 / 1024).toFixed(1));
-        const percent = parseInt(pctStr.replace('%', '')) || 0;
-        disks.push({ mountpoint, total: totalGB, used: usedGB, free: freeGB, percent });
+      disks.push(...parseFindmntDisks(stdout));
+
+      if (disks.length === 0) {
+        const { stdout: dfStdout } = await execAsync(
+          "df -hT --output=source,size,used,avail,pcent,fstype,target 2>/dev/null"
+        );
+        disks.push(...parseDfDisks(dfStdout));
       }
-      // Deduplicate by total+used (multiple device nodes for same volume)
-      const seen = new Set<string>();
-      const unique = disks.filter(d => {
-        const key = `${d.total}-${d.used}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      disks.length = 0;
-      disks.push(...unique);
 
       const primary = disks.find(d => d.mountpoint === '/') || disks[0];
       if (primary) {

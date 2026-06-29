@@ -1,0 +1,54 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function loadTypeScriptModule(filePath) {
+  const source = fs.readFileSync(filePath, "utf8");
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+
+  const loadedModule = { exports: {} };
+  new Function("exports", "module", output)(loadedModule.exports, loadedModule);
+  return loadedModule.exports;
+}
+
+test("parses root and OpenClaw data mount points from findmnt output", () => {
+  const { parseFindmntDisks } = loadTypeScriptModule(path.join(__dirname, "system-disks.ts"));
+  const output = [
+    "SOURCE TARGET FSTYPE SIZE USED AVAIL USE%",
+    "/dev/nvme0n1p1 / ext4 6.7G 5.8G 919.4M 86%",
+    "/dev/nvme0n1p1[/docker/containers/id/resolv.conf] /etc/resolv.conf ext4 6.7G 5.8G 919.4M 86%",
+    "tmpfs /run tmpfs 366.9M 1.3M 365.6M 0%",
+    "/dev/nvme1n1 /opt/openclaw-data ext4 29.4G 20G 8.2G 68%",
+  ].join("\n");
+
+  assert.deepEqual(parseFindmntDisks(output), [
+    {
+      source: "/dev/nvme0n1p1",
+      mountpoint: "/",
+      fstype: "ext4",
+      total: 6.7,
+      used: 5.8,
+      free: 0.9,
+      percent: 86,
+    },
+    {
+      source: "/dev/nvme1n1",
+      mountpoint: "/opt/openclaw-data",
+      fstype: "ext4",
+      total: 29.4,
+      used: 20,
+      free: 8.2,
+      percent: 68,
+    },
+  ]);
+});

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { format, subDays, eachDayOfInterval, startOfWeek } from "date-fns";
+import { normalizeActivityStats } from "@/lib/activity-response";
 
 interface HeatmapDay {
   day: string;
@@ -15,6 +16,7 @@ interface HeatmapStats {
   byType: Record<string, number>;
   byStatus: Record<string, number>;
   trend: Array<{ day: string; count: number; success: number; errors: number }>;
+  hourly: Array<{ hour: string; count: number }>;
 }
 
 function getColor(count: number, max: number): string {
@@ -34,8 +36,11 @@ export function ActivityHeatmap() {
   useEffect(() => {
     fetch("/api/activities/stats")
       .then((r) => r.json())
-      .then((data) => { setStats(data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then((data) => { setStats(normalizeActivityStats(data)); setLoading(false); })
+      .catch(() => {
+        setStats(normalizeActivityStats(null));
+        setLoading(false);
+      });
   }, []);
 
   if (loading) {
