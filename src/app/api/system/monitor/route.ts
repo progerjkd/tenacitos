@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import os from "os";
+import { parseDfDisks, parseFindmntDisks } from "@/lib/system-disks";
+import type { DiskEntry } from "@/lib/system-disks";
 
 const execAsync = promisify(exec);
 
@@ -81,41 +83,23 @@ export async function GET() {
     const usedMem = totalMem - freeMem;
 
     // ── Disk (all real filesystems) ───────────────────────────────────────────
-    interface DiskEntry { mountpoint: string; total: number; used: number; free: number; percent: number; }
     const disks: DiskEntry[] = [];
     let diskTotal = 100;
     let diskUsed = 0;
     let diskFree = 100;
     let diskPercent = 0;
     try {
-      // Exclude pseudo/virtual filesystems
       const { stdout } = await execAsync(
-        "df -BG --output=target,size,used,avail,pcent,fstype 2>/dev/null | tail -n +2"
+        "findmnt -D -o SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL,USE% 2>/dev/null"
       );
-      const EXCLUDE_FS = /^(tmpfs|devtmpfs|squashfs|sysfs|proc|devpts|cgroup|pstore|securityfs|efivarfs|hugetlbfs|mqueue|binfmt_misc|fusectl|configfs|ramfs|udev|sunrpc|overlay)$/i;
-      const EXCLUDE_MOUNT = /^(\/dev|\/sys|\/proc|\/run\/|\/snap\/)/;
-      for (const line of stdout.trim().split('\n')) {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length < 6) continue;
-        const [target, sizeRaw, usedRaw, availRaw, pctRaw, fstype] = parts;
-        if (EXCLUDE_FS.test(fstype) || EXCLUDE_MOUNT.test(target)) continue;
-        const total = parseInt(sizeRaw.replace('G', '')) || 0;
-        if (total === 0) continue;
-        const used = parseInt(usedRaw.replace('G', '')) || 0;
-        const free = parseInt(availRaw.replace('G', '')) || 0;
-        const percent = parseInt(pctRaw.replace('%', '')) || 0;
-        disks.push({ mountpoint: target, total, used, free, percent });
+      disks.push(...parseFindmntDisks(stdout));
+
+      if (disks.length === 0) {
+        const { stdout: dfStdout } = await execAsync(
+          "df -hT --output=source,size,used,avail,pcent,fstype,target 2>/dev/null"
+        );
+        disks.push(...parseDfDisks(dfStdout));
       }
-      // Deduplicate by size+used (overlay + physical device often same data)
-      const seen = new Set<string>();
-      const unique = disks.filter(d => {
-        const key = `${d.total}-${d.used}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      disks.length = 0;
-      disks.push(...unique);
 
       // Primary disk = root or first entry
       const primary = disks.find(d => d.mountpoint === '/') || disks[0];

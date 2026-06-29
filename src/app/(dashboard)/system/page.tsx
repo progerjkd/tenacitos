@@ -30,7 +30,9 @@ interface FirewallRule {
 }
 
 interface DiskEntry {
+  source?: string;
   mountpoint: string;
+  fstype?: string;
   total: number;
   used: number;
   free: number;
@@ -306,7 +308,12 @@ export default function SystemMonitorPage() {
                       <h3 className="font-semibold" style={{ color: "var(--text-primary)" }}>
                         Disk <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{disk.mountpoint}</span>
                       </h3>
-                      <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{disk.used}GB / {disk.total}GB</p>
+                      <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                        {disk.used}GB / {disk.total}GB
+                        {disk.source && (
+                          <span className="font-mono" style={{ color: "var(--text-muted)" }}> · {disk.source}{disk.fstype ? ` (${disk.fstype})` : ""}</span>
+                        )}
+                      </p>
                     </div>
                   </div>
                   <span className="text-2xl font-bold" style={{ color: dc }}>{disk.percent.toFixed(0)}%</span>

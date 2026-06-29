@@ -26,6 +26,7 @@ import {
   Download,
 } from "lucide-react";
 import { RichDescription } from "@/components/RichDescription";
+import { normalizeActivitiesResponse } from "@/lib/activity-response";
 
 interface Activity {
   id: string;
@@ -149,7 +150,12 @@ export default function ActivityPage() {
       }
 
       const res = await fetch(`/api/activities?${params.toString()}`);
-      const data: ActivitiesResponse = await res.json();
+      const rawData = await res.json().catch(() => null);
+      const data: ActivitiesResponse = normalizeActivitiesResponse(rawData, limit, currentOffset);
+
+      if (!res.ok) {
+        console.error("Failed to fetch activities:", rawData);
+      }
       
       let filteredActivities = data.activities;
       if (selectedTypes.size > 1) {
