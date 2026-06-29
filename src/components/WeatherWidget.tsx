@@ -20,6 +20,7 @@ interface WeatherData {
   precipitation: number;
   condition: string;
   emoji: string;
+  is_day: number;
   forecast: Forecast[];
   updated: string;
 }
@@ -74,7 +75,7 @@ export function WeatherWidget() {
             📍 {weather.city}
           </div>
           <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--text-primary)", lineHeight: 1, letterSpacing: "-1px" }}>
-            {format(now, "HH:mm")}
+            {format(now, "h:mm a")}
           </div>
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.125rem" }}>
             {format(now, "EEEE, d MMM")}
