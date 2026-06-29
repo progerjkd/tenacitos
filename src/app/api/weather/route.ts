@@ -1,12 +1,13 @@
 /**
- * Weather API - Madrid
+ * Weather API - IP-based geolocation
  * GET /api/weather
- * Uses Open-Meteo (free, no API key)
+ * Uses ip-api.com for geolocation + Open-Meteo for weather (both free, no API key)
  */
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 // Cache weather data for 10 minutes
-let cache: { data: unknown; ts: number } | null = null;
+const cache = new Map<string, { data: unknown; ts: number }>();
 const CACHE_DURATION = 10 * 60 * 1000;
 
 const WMO_CODES: Record<number, { label: string; emoji: string }> = {
@@ -29,19 +30,52 @@ const WMO_CODES: Record<number, { label: string; emoji: string }> = {
   81: { label: "Showers", emoji: "🌧️" },
   82: { label: "Heavy showers", emoji: "⛈️" },
   95: { label: "Thunderstorm", emoji: "⛈️" },
-  96: { label: "Thunderstorm with hail", emoji: "⛈️" },
+  96: { label: "Thunderstorm with hail", emoji: "⛈��" },
   99: { label: "Thunderstorm with heavy hail", emoji: "⛈️" },
 };
 
-export async function GET() {
-  // Return cache if valid
-  if (cache && Date.now() - cache.ts < CACHE_DURATION) {
-    return NextResponse.json(cache.data);
+async function geolocateIp(ip: string): Promise<{ lat: number; lon: number; city: string; timezone: string } | null> {
+  // Skip private/loopback IPs
+  if (!ip || ip === 'unknown' || ip.startsWith('127.') || ip.startsWith('10.') || ip.startsWith('192.168.') || ip === '::1') {
+    return null;
+  }
+  try {
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,lat,lon,city,timezone`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      return { lat: data.lat, lon: data.lon, city: data.city, timezone: data.timezone };
+    }
+  } catch {
+    // geolocation failed — fall through to default
+  }
+  return null;
+}
+
+export async function GET(request: NextRequest) {
+  // Get client IP
+  const ip =
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown';
+
+  // Try to geolocate, fall back to server location
+  const geo = await geolocateIp(ip);
+  const lat = geo?.lat ?? 43.7001;    // Toronto fallback
+  const lon = geo?.lon ?? -79.4163;
+  const city = geo?.city ?? 'Unknown';
+  const timezone = geo?.timezone ?? 'America/Toronto';
+
+  // Return cached response for this IP/location
+  const cacheKey = ip + ':' + city;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_DURATION) {
+    return NextResponse.json(cached.data);
   }
 
   try {
-    // Madrid coordinates: 40.4168° N, 3.7038° W
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Europe%2FMadrid&forecast_days=3';
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=${encodeURIComponent(timezone)}&forecast_days=3`;
 
     const res = await fetch(url, { next: { revalidate: 600 } });
     const json = await res.json();
@@ -52,7 +86,7 @@ export async function GET() {
     const wmo = WMO_CODES[current.weather_code] || { label: "Unknown", emoji: "🌡️" };
 
     const data = {
-      city: "Madrid",
+      city,
       temp: Math.round(current.temperature_2m),
       feels_like: Math.round(current.apparent_temperature),
       humidity: current.relative_humidity_2m,
@@ -69,7 +103,7 @@ export async function GET() {
       updated: new Date().toISOString(),
     };
 
-    cache = { data, ts: Date.now() };
+    cache.set(cacheKey, { data, ts: Date.now() });
     return NextResponse.json(data);
   } catch (error) {
     console.error('[weather] Error:', error);

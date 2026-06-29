@@ -43,7 +43,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <head>
-        <script dangerouslySetInnerHTML={{__html:`if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js")`}} />
+        <script dangerouslySetInnerHTML={{__html:`if("serviceWorker"in navigator&&(location.protocol==="http:"||location.protocol==="https:"))navigator.serviceWorker.register("/sw.js")`}} />
       </head>
       <body 
         className={`${inter.variable} ${sora.variable} ${jetbrainsMono.variable} font-sans`}

@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import path from 'path';
 
 /**
@@ -22,3 +23,30 @@ export const ALLOWED_MEDIA_PREFIXES = [
   path.join(OPENCLAW_WORKSPACE, '/'),
   path.join(OPENCLAW_MEDIA, '/'),
 ];
+
+/**
+ * Resolves a workspace ID to an absolute path.
+ * Handles static IDs (workspace, mission-control) and dynamic agent-* IDs
+ * sourced from openclaw.json so that file mutations work for all workspaces.
+ */
+export function resolveWorkspacePath(id: string): string | null {
+  const staticMap: Record<string, string> = {
+    workspace: OPENCLAW_WORKSPACE,
+    'mission-control': path.join(OPENCLAW_DIR, 'workspace', 'mission-control'),
+  };
+  if (staticMap[id]) return staticMap[id];
+
+  if (id.startsWith('agent-')) {
+    const agentId = id.slice('agent-'.length);
+    try {
+      const config = JSON.parse(readFileSync(OPENCLAW_CONFIG, 'utf-8'));
+      const agent = (config?.agents?.list ?? []).find(
+        (a: { id: string }) => a.id === agentId,
+      );
+      return agent?.workspace ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}

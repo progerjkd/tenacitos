@@ -308,7 +308,7 @@ export function Sidebar() {
             }}
           >
             <LogOut className="w-4 h-4" />
-            <span className="text-sm">Cerrar sesión</span>
+            <span className="text-sm">Log out</span>
           </button>
         </div>
       </aside>

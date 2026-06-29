@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
+import { promises as fs, readFileSync } from "fs";
 import path from "path";
 
 const OPENCLAW_DIR = process.env.OPENCLAW_DIR || "/root/.openclaw";
@@ -11,6 +11,20 @@ interface FileEntry {
   modified: string;
 }
 
+function resolveWorkspacePath(workspace: string): string {
+  if (workspace === "workspace") return path.join(OPENCLAW_DIR, "workspace");
+  if (workspace.startsWith("workspace-")) return path.join(OPENCLAW_DIR, workspace);
+  if (workspace.startsWith("agent-")) {
+    const agentId = workspace.replace("agent-", "");
+    try {
+      const config = JSON.parse(readFileSync(path.join(OPENCLAW_DIR, "openclaw.json"), "utf-8"));
+      const agent = (config?.agents?.list as Array<{ id: string; workspace?: string }>)?.find(a => a.id === agentId);
+      if (agent?.workspace) return agent.workspace;
+    } catch {}
+  }
+  return path.join(OPENCLAW_DIR, workspace);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -18,9 +32,9 @@ export async function GET(request: NextRequest) {
     const relativePath = searchParams.get("path") || "";
     const fileContent = searchParams.get("content") === "true";
     const rawMode = searchParams.get("raw") === "true";
-    
+
     // Determine BASE_PATH based on workspace
-    const BASE_PATH = path.join(OPENCLAW_DIR, workspace);
+    const BASE_PATH = resolveWorkspacePath(workspace);
     
     // Validate workspace exists
     try {
