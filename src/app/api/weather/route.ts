@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=${encodeURIComponent(timezone)}&forecast_days=3`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation,is_day&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=${encodeURIComponent(timezone)}&forecast_days=3`;
 
     const res = await fetch(url, { next: { revalidate: 600 } });
     const json = await res.json();
@@ -83,7 +83,11 @@ export async function GET(request: NextRequest) {
     const current = json.current;
     const daily = json.daily;
 
+    const isDay = current.is_day === 1;
     const wmo = WMO_CODES[current.weather_code] || { label: "Unknown", emoji: "🌡️" };
+    // Use moon emoji for clear/mainly-clear conditions at night
+    let emoji = wmo.emoji;
+    if (!isDay && current.weather_code <= 1) emoji = "🌙";
 
     const data = {
       city,
@@ -93,7 +97,8 @@ export async function GET(request: NextRequest) {
       wind: Math.round(current.wind_speed_10m),
       precipitation: current.precipitation,
       condition: wmo.label,
-      emoji: wmo.emoji,
+      emoji,
+      is_day: current.is_day,
       forecast: daily.time.slice(0, 3).map((day: string, i: number) => ({
         day,
         max: Math.round(daily.temperature_2m_max[i]),

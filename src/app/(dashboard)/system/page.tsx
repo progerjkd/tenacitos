@@ -551,7 +551,7 @@ export default function SystemMonitorPage() {
                   <ShieldCheck className="w-5 h-5" style={{ color: systemData.firewall.active ? "var(--success)" : "var(--error)" }} />
                 </div>
                 <div>
-                  <h3 className="font-semibold" style={{ color: "var(--text-primary)" }}>Firewall (UFW)</h3>
+                  <h3 className="font-semibold" style={{ color: "var(--text-primary)" }}>Firewall (iptables)</h3>
                   <p className="text-sm" style={{ color: systemData.firewall.active ? "var(--success)" : "var(--error)" }}>
                     {systemData.firewall.active ? "Active" : "Inactive"}
                   </p>
