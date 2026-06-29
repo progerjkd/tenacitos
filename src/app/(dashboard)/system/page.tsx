@@ -173,7 +173,6 @@ export default function SystemMonitorPage() {
   const cpuColor = systemData.cpu.usage < 60 ? "var(--success)" : systemData.cpu.usage < 85 ? "var(--warning)" : "var(--error)";
   const ramPercent = (systemData.ram.used / systemData.ram.total) * 100;
   const ramColor = ramPercent < 60 ? "var(--success)" : ramPercent < 85 ? "var(--warning)" : "var(--error)";
-  const diskColor = systemData.disk.percent < 60 ? "var(--success)" : systemData.disk.percent < 85 ? "var(--warning)" : "var(--error)";
 
   const activeServices = systemData.systemd.filter((s) => s.status === "active").length;
 

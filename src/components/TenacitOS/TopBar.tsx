@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, User, Key, ImageIcon, LogOut, ChevronDown } from "lucide-react";
+import { Search, Key, ImageIcon, ChevronDown } from "lucide-react";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { NotificationDropdown } from "@/components/NotificationDropdown";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";

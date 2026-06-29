@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import path from 'path';
 
 /**
@@ -38,7 +39,6 @@ export function resolveWorkspacePath(id: string): string | null {
   if (id.startsWith('agent-')) {
     const agentId = id.slice('agent-'.length);
     try {
-      const { readFileSync } = require('fs');
       const config = JSON.parse(readFileSync(OPENCLAW_CONFIG, 'utf-8'));
       const agent = (config?.agents?.list ?? []).find(
         (a: { id: string }) => a.id === agentId,
