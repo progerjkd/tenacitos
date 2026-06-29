@@ -4,6 +4,7 @@ import {
   resolveChannelId,
   getChannelHistory,
   getUserInfo,
+  slackChannelEnvVar,
   type SlackMessage,
   type SlackUserInfo,
 } from "@/lib/slack";
@@ -17,6 +18,11 @@ export interface ChannelResult {
   error?: string;
 }
 
+function channelError(reason: unknown): string {
+  if (reason instanceof Error) return reason.message;
+  return String(reason);
+}
+
 export async function GET() {
   const results = await Promise.allSettled(
     SLACK_CHANNELS.map(async (channelName): Promise<ChannelResult> => {
@@ -26,7 +32,7 @@ export async function GET() {
           name: channelName,
           channelId: null,
           messages: [],
-          error: "Channel not found — set SLACK_CHANNEL_* env vars",
+          error: `Channel not found. Set ${slackChannelEnvVar(channelName) ?? "SLACK_CHANNEL_*"} to the channel ID or make sure the Slack app can read it.`,
         };
       }
 
@@ -50,7 +56,7 @@ export async function GET() {
         name: SLACK_CHANNELS[i]!,
         channelId: null,
         messages: [],
-        error: String(r.reason),
+        error: channelError(r.reason),
       };
     }
     return r.value;
