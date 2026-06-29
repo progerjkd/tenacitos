@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync, statSync } from "fs";
 import path from "path";
 
-const AVATAR_DIR = process.env.OPENCLAW_DIR
-  ? path.join(process.env.OPENCLAW_DIR, "media")
-  : "/home/node/.openclaw/media";
+const AVATAR_DIR = path.join(process.env.OPENCLAW_DIR || "/root/.openclaw", "media");
 
 const AVATAR_PATH = path.join(AVATAR_DIR, "avatar.jpg");
 const AVATAR_URL = `/api/media${AVATAR_PATH}`;
@@ -17,7 +15,8 @@ export async function GET() {
   if (!existsSync(AVATAR_PATH)) {
     return NextResponse.json({ url: null });
   }
-  return NextResponse.json({ url: AVATAR_URL });
+  const mtime = statSync(AVATAR_PATH).mtimeMs;
+  return NextResponse.json({ url: `${AVATAR_URL}?t=${Math.floor(mtime)}` });
 }
 
 export async function POST(request: NextRequest) {
@@ -42,8 +41,9 @@ export async function POST(request: NextRequest) {
 
     const bytes = await file.arrayBuffer();
     writeFileSync(AVATAR_PATH, Buffer.from(bytes));
+    const mtime = statSync(AVATAR_PATH).mtimeMs;
 
-    return NextResponse.json({ url: AVATAR_URL + "?t=" + Date.now() });
+    return NextResponse.json({ url: `${AVATAR_URL}?t=${Math.floor(mtime)}` });
   } catch (err) {
     console.error("Avatar upload error:", err);
     return NextResponse.json({ error: "Upload failed" }, { status: 500 });

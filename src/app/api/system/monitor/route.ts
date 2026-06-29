@@ -80,33 +80,34 @@ export async function GET() {
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
 
-    // ── Disk (all real filesystems) ───────────────────────────────────────────
+    // ── Disk (all real block devices) ─────────────────────────────────────────
     interface DiskEntry { mountpoint: string; total: number; used: number; free: number; percent: number; }
     const disks: DiskEntry[] = [];
-    let diskTotal = 100;
+    let diskTotal = 0;
     let diskUsed = 0;
-    let diskFree = 100;
+    let diskFree = 0;
     let diskPercent = 0;
     try {
-      // Exclude pseudo/virtual filesystems
+      // Use POSIX format (-P) with KB blocks (-BK) for precision and broad compatibility
       const { stdout } = await execAsync(
-        "df -BG --output=target,size,used,avail,pcent,fstype 2>/dev/null | tail -n +2"
+        "df -BK -P 2>/dev/null | tail -n +2"
       );
-      const EXCLUDE_FS = /^(tmpfs|devtmpfs|squashfs|sysfs|proc|devpts|cgroup|pstore|securityfs|efivarfs|hugetlbfs|mqueue|binfmt_misc|fusectl|configfs|ramfs|udev|sunrpc|overlay)$/i;
-      const EXCLUDE_MOUNT = /^(\/dev|\/sys|\/proc|\/run\/|\/snap\/)/;
-      for (const line of stdout.trim().split('\n')) {
+      const EXCLUDE_MOUNT = /^(\/dev\/|\/sys\/|\/proc\/|\/run\/|\/snap\/)/;
+      for (const line of stdout.trim().split('\n').filter(Boolean)) {
         const parts = line.trim().split(/\s+/);
         if (parts.length < 6) continue;
-        const [target, sizeRaw, usedRaw, availRaw, pctRaw, fstype] = parts;
-        if (EXCLUDE_FS.test(fstype) || EXCLUDE_MOUNT.test(target)) continue;
-        const total = parseInt(sizeRaw.replace('G', '')) || 0;
-        if (total === 0) continue;
-        const used = parseInt(usedRaw.replace('G', '')) || 0;
-        const free = parseInt(availRaw.replace('G', '')) || 0;
-        const percent = parseInt(pctRaw.replace('%', '')) || 0;
-        disks.push({ mountpoint: target, total, used, free, percent });
+        const [device, totalK, usedK, availK, pctStr, mountpoint] = parts;
+        // Only include real block devices (EBS, local disks)
+        if (!device.startsWith('/dev/')) continue;
+        if (EXCLUDE_MOUNT.test(mountpoint)) continue;
+        const totalGB = parseFloat((parseInt(totalK) / 1024 / 1024).toFixed(1));
+        if (totalGB < 0.1) continue;
+        const usedGB = parseFloat((parseInt(usedK) / 1024 / 1024).toFixed(1));
+        const freeGB = parseFloat((parseInt(availK) / 1024 / 1024).toFixed(1));
+        const percent = parseInt(pctStr.replace('%', '')) || 0;
+        disks.push({ mountpoint, total: totalGB, used: usedGB, free: freeGB, percent });
       }
-      // Deduplicate by size+used (overlay + physical device often same data)
+      // Deduplicate by total+used (multiple device nodes for same volume)
       const seen = new Set<string>();
       const unique = disks.filter(d => {
         const key = `${d.total}-${d.used}`;
@@ -117,7 +118,6 @@ export async function GET() {
       disks.length = 0;
       disks.push(...unique);
 
-      // Primary disk = root or first entry
       const primary = disks.find(d => d.mountpoint === '/') || disks[0];
       if (primary) {
         diskTotal = primary.total;
@@ -305,7 +305,7 @@ export async function GET() {
       console.error("Failed to get Tailscale status:", error);
     }
 
-    // ── Firewall (UFW) ────────────────────────────────────────────────────────
+    // ── Firewall (iptables) ───────────────────────────────────────────────────
     let firewallActive = false;
     const firewallRulesList: FirewallRule[] = [];
     const staticFirewallRules: FirewallRule[] = [
@@ -315,24 +315,28 @@ export async function GET() {
       { port: "22", action: "ALLOW", from: "Tailscale (100.64.0.0/10)", comment: "SSH via Tailscale only" },
     ];
     try {
-      const { stdout: ufwStatus } = await execAsync("ufw status numbered 2>/dev/null || true");
-      if (ufwStatus.includes("Status: active")) {
+      const { stdout: iptSave } = await execAsync("iptables-save 2>/dev/null || true");
+      if (iptSave.trim().length > 0) {
         firewallActive = true;
-        const lines = ufwStatus.split("\n");
-        for (const line of lines) {
-          const match = line.match(/\[\s*\d+\]\s+([\w/:]+)\s+(\w+)\s+(\S+)\s*(#?.*)$/);
-          if (match) {
-            firewallRulesList.push({
-              port: match[1].trim(),
-              action: match[2].trim(),
-              from: match[3].trim(),
-              comment: match[4].replace("#", "").trim(),
-            });
-          }
+        for (const line of iptSave.split('\n')) {
+          // Parse ACCEPT rules in INPUT chain with a specific dport
+          const m = line.match(/^-A INPUT (.+) -j ACCEPT/);
+          if (!m) continue;
+          const body = m[1];
+          const dportM = body.match(/--dport (\d+(?::\d+)?)/);
+          if (!dportM) continue;
+          const protM = body.match(/-p (\w+)/);
+          const srcM = body.match(/-s ([\d.\/]+)/);
+          firewallRulesList.push({
+            port: dportM[1] + (protM ? `/${protM[1]}` : ''),
+            action: "ALLOW",
+            from: srcM ? srcM[1] : "Anywhere",
+            comment: "",
+          });
         }
       }
     } catch (error) {
-      console.error("Failed to get firewall status:", error);
+      console.error("Failed to get iptables status:", error);
     }
 
     return NextResponse.json({
