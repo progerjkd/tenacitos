@@ -60,7 +60,7 @@ function normalizePm2Status(status: string): string {
 
 // Friendly display names for PM2 process names
 const SERVICE_DESCRIPTIONS: Record<string, string> = {
-  "mission-control": "Mission Control – Tenacitas Dashboard",
+  "mission-control": "NeuralOps Mission Control Dashboard",
   classvault: "ClassVault – LMS Platform",
   "content-vault": "Content Vault – Draft Management Webapp",
   "postiz-simple": "Postiz – Social Media Scheduler",
@@ -80,20 +80,73 @@ export async function GET() {
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
 
-    // ── Disk ─────────────────────────────────────────────────────────────────
+    // ── Disk (all real filesystems) ───────────────────────────────────────────
+    interface DiskEntry { mountpoint: string; total: number; used: number; free: number; percent: number; }
+    const disks: DiskEntry[] = [];
     let diskTotal = 100;
     let diskUsed = 0;
     let diskFree = 100;
+    let diskPercent = 0;
     try {
-      const { stdout } = await execAsync("df -BG / | tail -1");
-      const parts = stdout.trim().split(/\s+/);
-      diskTotal = parseInt(parts[1].replace("G", ""));
-      diskUsed = parseInt(parts[2].replace("G", ""));
-      diskFree = parseInt(parts[3].replace("G", ""));
+      // Exclude pseudo/virtual filesystems
+      const { stdout } = await execAsync(
+        "df -BG --output=target,size,used,avail,pcent,fstype 2>/dev/null | tail -n +2"
+      );
+      const EXCLUDE_FS = /^(tmpfs|devtmpfs|squashfs|sysfs|proc|devpts|cgroup|pstore|securityfs|efivarfs|hugetlbfs|mqueue|binfmt_misc|fusectl|configfs|ramfs|udev|sunrpc|overlay)$/i;
+      const EXCLUDE_MOUNT = /^(\/dev|\/sys|\/proc|\/run\/|\/snap\/)/;
+      for (const line of stdout.trim().split('\n')) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 6) continue;
+        const [target, sizeRaw, usedRaw, availRaw, pctRaw, fstype] = parts;
+        if (EXCLUDE_FS.test(fstype) || EXCLUDE_MOUNT.test(target)) continue;
+        const total = parseInt(sizeRaw.replace('G', '')) || 0;
+        if (total === 0) continue;
+        const used = parseInt(usedRaw.replace('G', '')) || 0;
+        const free = parseInt(availRaw.replace('G', '')) || 0;
+        const percent = parseInt(pctRaw.replace('%', '')) || 0;
+        disks.push({ mountpoint: target, total, used, free, percent });
+      }
+      // Deduplicate by size+used (overlay + physical device often same data)
+      const seen = new Set<string>();
+      const unique = disks.filter(d => {
+        const key = `${d.total}-${d.used}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      disks.length = 0;
+      disks.push(...unique);
+
+      // Primary disk = root or first entry
+      const primary = disks.find(d => d.mountpoint === '/') || disks[0];
+      if (primary) {
+        diskTotal = primary.total;
+        diskUsed = primary.used;
+        diskFree = primary.free;
+        diskPercent = primary.percent;
+      }
     } catch (error) {
       console.error("Failed to get disk stats:", error);
     }
-    const diskPercent = (diskUsed / diskTotal) * 100;
+    if (disks.length === 0) {
+      disks.push({ mountpoint: '/', total: diskTotal, used: diskUsed, free: diskFree, percent: diskPercent });
+    }
+
+    // ── Swap ──────────────────────────────────────────────────────────────────
+    let swapTotal = 0;
+    let swapUsed = 0;
+    let swapFree = 0;
+    try {
+      const { readFileSync } = await import('fs');
+      const meminfo = readFileSync('/proc/meminfo', 'utf-8');
+      const swapTotalMatch = meminfo.match(/SwapTotal:\s+(\d+)\s+kB/);
+      const swapFreeMatch = meminfo.match(/SwapFree:\s+(\d+)\s+kB/);
+      if (swapTotalMatch) swapTotal = parseInt(swapTotalMatch[1]) / 1024 / 1024; // GB
+      if (swapFreeMatch) swapFree = parseInt(swapFreeMatch[1]) / 1024 / 1024;
+      swapUsed = swapTotal - swapFree;
+    } catch {
+      // swap info unavailable
+    }
 
     // ── Network (real stats from /proc/net/dev) ───────────────────────────────
     let network = { rx: 0, tx: 0 };
@@ -294,12 +347,19 @@ export async function GET() {
         free: parseFloat((freeMem / 1024 / 1024 / 1024).toFixed(2)),
         cached: 0,
       },
+      swap: {
+        total: parseFloat(swapTotal.toFixed(2)),
+        used: parseFloat(swapUsed.toFixed(2)),
+        free: parseFloat(swapFree.toFixed(2)),
+        percent: swapTotal > 0 ? parseFloat(((swapUsed / swapTotal) * 100).toFixed(1)) : 0,
+      },
       disk: {
         total: diskTotal,
         used: diskUsed,
         free: diskFree,
         percent: diskPercent,
       },
+      disks,
       network,
       systemd: services, // kept field name for backwards compat with page.tsx
       tailscale: {
@@ -311,7 +371,7 @@ export async function GET() {
             : [
                 { ip: "100.122.105.85", hostname: "srv1328267", os: "linux", online: true },
                 { ip: "100.106.86.52", hostname: "iphone182", os: "iOS", online: true },
-                { ip: "100.72.14.113", hostname: "macbook-pro-de-carlos", os: "macOS", online: true },
+                { ip: "100.72.14.113", hostname: `macbook-pro-de-${(process.env.NEXT_PUBLIC_OWNER_USERNAME || 'owner').toLowerCase()}`, os: "macOS", online: true },
               ],
       },
       firewall: {

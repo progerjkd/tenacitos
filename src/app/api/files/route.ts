@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
+import { promises as fs, readFileSync } from "fs";
 import path from "path";
 
 const OPENCLAW_DIR = process.env.OPENCLAW_DIR || "/root/.openclaw";
+
+function resolveWorkspacePath(workspace: string): string {
+  if (workspace === "workspace") return path.join(OPENCLAW_DIR, "workspace");
+  if (workspace.startsWith("workspace-")) return path.join(OPENCLAW_DIR, workspace);
+  if (workspace.startsWith("agent-")) {
+    const agentId = workspace.replace("agent-", "");
+    try {
+      const config = JSON.parse(readFileSync(path.join(OPENCLAW_DIR, "openclaw.json"), "utf-8"));
+      const agent = (config?.agents?.list as Array<{ id: string; workspace?: string }>)?.find(a => a.id === agentId);
+      if (agent?.workspace) return agent.workspace;
+    } catch {}
+  }
+  return path.join(OPENCLAW_DIR, workspace);
+}
 
 // Files to show in the memory browser
 const ROOT_FILES = ["MEMORY.md", "SOUL.md", "USER.md", "AGENTS.md", "TOOLS.md", "IDENTITY.md"];
@@ -101,7 +115,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Determine workspace path
-    const workspacePath = path.join(OPENCLAW_DIR, workspace);
+    const workspacePath = resolveWorkspacePath(workspace);
     
     // Validate workspace exists
     if (!(await fileExists(workspacePath))) {
@@ -165,8 +179,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const workspacePath = path.join(OPENCLAW_DIR, workspace);
-    
+    const workspacePath = resolveWorkspacePath(workspace);
+
     // Validate workspace exists
     if (!(await fileExists(workspacePath))) {
       return NextResponse.json(

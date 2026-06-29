@@ -1,7 +1,7 @@
 'use client';
 
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Sky, Environment } from '@react-three/drei';
+import { OrbitControls, Sky } from '@react-three/drei';
 import { Suspense, useState } from 'react';
 import { Vector3 } from 'three';
 import { AGENTS } from './agentsConfig';
@@ -27,10 +27,10 @@ export default function Office3D() {
   
   // Mock data - TODO: Replace with real API data
   const [agentStates] = useState<Record<string, AgentState>>({
-    main: { id: 'main', status: 'working', currentTask: 'Procesando emails', model: 'opus', tokensPerHour: 15000, tasksInQueue: 3, uptime: 12 },
+    main: { id: 'main', status: 'working', currentTask: 'Processing emails', model: 'opus', tokensPerHour: 15000, tasksInQueue: 3, uptime: 12 },
     academic: { id: 'academic', status: 'idle', model: 'sonnet', tokensPerHour: 0, tasksInQueue: 0, uptime: 8 },
-    studio: { id: 'studio', status: 'thinking', currentTask: 'Generando guión YouTube', model: 'opus', tokensPerHour: 8000, tasksInQueue: 1, uptime: 5 },
-    linkedin: { id: 'linkedin', status: 'working', currentTask: 'Redactando post', model: 'sonnet', tokensPerHour: 5000, tasksInQueue: 2, uptime: 10 },
+    studio: { id: 'studio', status: 'thinking', currentTask: 'Writing YouTube script', model: 'opus', tokensPerHour: 8000, tasksInQueue: 1, uptime: 5 },
+    linkedin: { id: 'linkedin', status: 'working', currentTask: 'Drafting post', model: 'sonnet', tokensPerHour: 5000, tasksInQueue: 2, uptime: 10 },
     social: { id: 'social', status: 'idle', model: 'sonnet', tokensPerHour: 0, tasksInQueue: 0, uptime: 7 },
     infra: { id: 'infra', status: 'error', currentTask: 'Failed deployment', model: 'haiku', tokensPerHour: 1000, tasksInQueue: 0, uptime: 15 },
   });
@@ -63,20 +63,20 @@ export default function Office3D() {
     setAvatarPositions(prev => new Map(prev).set(id, position));
   };
 
-  // Definir obstáculos (muebles)
+  // Define obstacles (furniture)
   const obstacles = [
-    // Escritorios (6)
+    // Desks (6)
     ...AGENTS.map(agent => ({
       position: new Vector3(agent.position[0], 0, agent.position[2]),
       radius: 1.5
     })),
-    // Archivador
+    // Filing cabinet
     { position: new Vector3(-8, 0, -5), radius: 0.8 },
-    // Pizarra
+    // Whiteboard
     { position: new Vector3(0, 0, -8), radius: 1.5 },
-    // Máquina de café
+    // Coffee machine
     { position: new Vector3(8, 0, -5), radius: 0.6 },
-    // Plantas
+    // Plants
     { position: new Vector3(-7, 0, 6), radius: 0.5 },
     { position: new Vector3(7, 0, 6), radius: 0.5 },
     { position: new Vector3(-9, 0, 0), radius: 0.4 },
@@ -97,20 +97,21 @@ export default function Office3D() {
             <meshStandardMaterial color="orange" />
           </mesh>
         }>
-          {/* Iluminación */}
+          {/* Lighting */}
           <Lights />
 
-          {/* Cielo y ambiente */}
+          {/* Sky and ambient */}
           <Sky sunPosition={[100, 20, 100]} />
-          <Environment preset="sunset" />
+          <ambientLight intensity={0.4} />
+          <hemisphereLight args={["#87CEEB", "#8B7355", 0.3]} />
 
-          {/* Suelo */}
+          {/* Floor */}
           <Floor />
 
-          {/* Paredes */}
+          {/* Walls */}
           <Walls />
 
-          {/* Escritorios de agentes (sin avatares) */}
+          {/* Agent desks */}
           {AGENTS.map((agent) => (
             <AgentDesk
               key={agent.id}
@@ -121,7 +122,7 @@ export default function Office3D() {
             />
           ))}
 
-          {/* Avatares móviles */}
+          {/* Moving avatars */}
           {AGENTS.map((agent) => (
             <MovingAvatar
               key={`avatar-${agent.id}`}
@@ -134,7 +135,7 @@ export default function Office3D() {
             />
           ))}
 
-          {/* Mobiliario interactivo */}
+          {/* Interactive furniture */}
           <FileCabinet
             position={[-8, 0, -5]}
             onClick={handleFileCabinetClick}
@@ -149,7 +150,7 @@ export default function Office3D() {
             onClick={handleCoffeeClick}
           />
 
-          {/* Decoración */}
+          {/* Decoration */}
           <PlantPot position={[-7, 0, 6]} size="large" />
           <PlantPot position={[7, 0, 6]} size="medium" />
           <PlantPot position={[-9, 0, 0]} size="small" />
@@ -159,7 +160,7 @@ export default function Office3D() {
             rotation={[0, 0, 0]}
           />
 
-          {/* Controles de cámara */}
+          {/* Camera controls */}
           {controlMode === 'orbit' ? (
             <OrbitControls
               enableDamping
@@ -278,23 +279,23 @@ export default function Office3D() {
         </div>
       )}
 
-      {/* Controles UI overlay */}
+      {/* UI overlay */}
       <div className="absolute top-4 left-4 bg-black/70 text-white p-4 rounded-lg backdrop-blur-sm">
         <h2 className="text-lg font-bold mb-2">🏢 The Office</h2>
         <div className="text-sm space-y-1 mb-3">
           <p><strong>Mode: {controlMode === 'orbit' ? '🖱️ Orbit' : '🎮 FPS'}</strong></p>
           {controlMode === 'orbit' ? (
             <>
-              <p>🖱️ Mouse: Rotar vista</p>
+              <p>🖱️ Mouse: Rotate view</p>
               <p>🔄 Scroll: Zoom</p>
-              <p>👆 Click: Seleccionar</p>
+              <p>👆 Click: Select</p>
             </>
           ) : (
             <>
               <p>Click to lock cursor</p>
-              <p>WASD/Arrows: Mover</p>
-              <p>Space: Subir | Shift: Bajar</p>
-              <p>Mouse: Mirar | ESC: Unlock</p>
+              <p>WASD/Arrows: Move</p>
+              <p>Space: Up | Shift: Down</p>
+              <p>Mouse: Look | ESC: Unlock</p>
             </>
           )}
         </div>
@@ -308,7 +309,7 @@ export default function Office3D() {
 
       {/* Legend */}
       <div className="absolute bottom-4 right-4 bg-black/70 text-white p-4 rounded-lg backdrop-blur-sm">
-        <h3 className="text-sm font-bold mb-2">Estados</h3>
+        <h3 className="text-sm font-bold mb-2">Status</h3>
         <div className="text-xs space-y-1">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-green-500 rounded-full"></div>

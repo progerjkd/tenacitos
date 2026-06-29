@@ -77,7 +77,7 @@ export default function DashboardPage() {
           🦞 Mission Control
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-          Overview of Tenacitas agent activity
+          Overview of NeuralOps agent activity
         </p>
       </div>
 

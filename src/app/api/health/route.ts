@@ -71,15 +71,15 @@ export async function GET() {
 
   // External URLs
   const urlChecks = await Promise.all([
-    checkUrl('https://tenacitas.cazaustre.dev'),
+    checkUrl('https://neuralops.ca'),
     checkUrl('https://api.anthropic.com', 3000),
   ]);
 
   checks.push({
-    name: 'tenacitas.cazaustre.dev',
+    name: 'neuralops.ca',
     status: urlChecks[0].status,
     latency: urlChecks[0].latency,
-    url: 'https://tenacitas.cazaustre.dev',
+    url: 'https://neuralops.ca',
   });
 
   checks.push({

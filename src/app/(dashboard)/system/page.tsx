@@ -29,10 +29,20 @@ interface FirewallRule {
   comment: string;
 }
 
+interface DiskEntry {
+  mountpoint: string;
+  total: number;
+  used: number;
+  free: number;
+  percent: number;
+}
+
 interface SystemData {
   cpu: { usage: number; cores: number[]; loadAvg: number[] };
   ram: { total: number; used: number; free: number; cached: number };
+  swap?: { total: number; used: number; free: number; percent: number };
   disk: { total: number; used: number; free: number; percent: number };
+  disks?: DiskEntry[];
   network: { rx: number; tx: number };
   systemd: SystemdService[];
   tailscale: { active: boolean; ip: string; devices: TailscaleDevice[] };
@@ -248,7 +258,7 @@ export default function SystemMonitorPage() {
             </div>
           </div>
 
-          {/* RAM */}
+          {/* RAM + Swap */}
           <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -262,29 +272,52 @@ export default function SystemMonitorPage() {
               </div>
               <span className="text-2xl font-bold" style={{ color: ramColor }}>{ramPercent.toFixed(0)}%</span>
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--card-elevated)" }}>
+            <div className="h-2 rounded-full overflow-hidden mb-4" style={{ backgroundColor: "var(--card-elevated)" }}>
               <div className="h-full transition-all duration-500" style={{ width: `${ramPercent}%`, backgroundColor: ramColor }} />
             </div>
+            {systemData.swap && systemData.swap.total > 0 && (() => {
+              const swapColor = systemData.swap!.percent < 60 ? "var(--success)" : systemData.swap!.percent < 85 ? "var(--warning)" : "var(--error)";
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                      Swap — {systemData.swap!.used.toFixed(1)}GB / {systemData.swap!.total.toFixed(1)}GB
+                    </span>
+                    <span className="text-sm font-bold" style={{ color: swapColor }}>{systemData.swap!.percent.toFixed(0)}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--card-elevated)" }}>
+                    <div className="h-full transition-all duration-500" style={{ width: `${systemData.swap!.percent}%`, backgroundColor: swapColor }} />
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
-          {/* Disk */}
-          <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: "var(--card-elevated)" }}>
-                  <HardDrive className="w-5 h-5" style={{ color: diskColor }} />
+          {/* Disks */}
+          {(systemData.disks && systemData.disks.length > 0 ? systemData.disks : [{ mountpoint: '/', ...systemData.disk }]).map((disk) => {
+            const dc = disk.percent < 60 ? "var(--success)" : disk.percent < 85 ? "var(--warning)" : "var(--error)";
+            return (
+              <div key={disk.mountpoint} className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg" style={{ backgroundColor: "var(--card-elevated)" }}>
+                      <HardDrive className="w-5 h-5" style={{ color: dc }} />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                        Disk <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{disk.mountpoint}</span>
+                      </h3>
+                      <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{disk.used}GB / {disk.total}GB</p>
+                    </div>
+                  </div>
+                  <span className="text-2xl font-bold" style={{ color: dc }}>{disk.percent.toFixed(0)}%</span>
                 </div>
-                <div>
-                  <h3 className="font-semibold" style={{ color: "var(--text-primary)" }}>Disk</h3>
-                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{systemData.disk.used.toFixed(1)}GB / {systemData.disk.total.toFixed(1)}GB</p>
+                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--card-elevated)" }}>
+                  <div className="h-full transition-all duration-500" style={{ width: `${disk.percent}%`, backgroundColor: dc }} />
                 </div>
               </div>
-              <span className="text-2xl font-bold" style={{ color: diskColor }}>{systemData.disk.percent.toFixed(0)}%</span>
-            </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--card-elevated)" }}>
-              <div className="h-full transition-all duration-500" style={{ width: `${systemData.disk.percent}%`, backgroundColor: diskColor }} />
-            </div>
-          </div>
+            );
+          })}
 
           {/* Network */}
           <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>

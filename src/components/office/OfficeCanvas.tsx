@@ -499,7 +499,7 @@ export function OfficeCanvas({ agents }: OfficeCanvasProps) {
           letterSpacing: "4px",
         }}
       >
-        ${BRANDING.companyName}
+        {BRANDING.companyName}
       </h2>
       <canvas
         ref={canvasRef}
