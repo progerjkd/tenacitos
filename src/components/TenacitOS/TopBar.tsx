@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Search, Key, ImageIcon, ChevronDown } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Search, Key, ImageIcon, ChevronDown, LogOut } from "lucide-react";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { NotificationDropdown } from "@/components/NotificationDropdown";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
@@ -35,6 +35,11 @@ export function TopBar() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const handleLogout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }, []);
+
   const handleAvatarUpload = async (file: File) => {
     setAvatarUploading(true);
     try {
@@ -43,7 +48,7 @@ export function TopBar() {
       const res = await fetch("/api/auth/avatar", { method: "POST", body: fd });
       if (res.ok) {
         const d = await res.json();
-        setAvatarUrl(d.url + "?t=" + Date.now());
+        setAvatarUrl(d.url);
         setShowAvatarModal(false);
       }
     } catch {}
@@ -228,6 +233,20 @@ export function TopBar() {
                     {label}
                   </button>
                 ))}
+                <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 w-full text-left"
+                  style={{
+                    padding: "9px 14px", background: "none", border: "none", cursor: "pointer",
+                    fontSize: "13px", color: "var(--error)", transition: "all 120ms",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.08)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = "transparent"; }}
+                >
+                  <LogOut style={{ width: "14px", height: "14px" }} />
+                  Log Out
+                </button>
               </div>
             )}
           </div>
