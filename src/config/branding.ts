@@ -17,7 +17,7 @@ export const BRANDING = {
   agentDescription: process.env.NEXT_PUBLIC_AGENT_DESCRIPTION || "", // one-line description
 
   // User/owner information (optional - used in workflow descriptions)
-  ownerUsername: process.env.NEXT_PUBLIC_OWNER_USERNAME || "your-username",
+  ownerUsername: process.env.NEXT_PUBLIC_OWNER_USERNAME || "Roger",
   ownerEmail: process.env.NEXT_PUBLIC_OWNER_EMAIL || "owner@example.com",
   ownerCollabEmail: process.env.NEXT_PUBLIC_OWNER_COLLAB_EMAIL || "collabs@example.com",
 
