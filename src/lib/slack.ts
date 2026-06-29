@@ -18,28 +18,75 @@ function slackAuthHeader(): string {
   return `Bearer ${process.env.SLACK_BOT_TOKEN ?? ""}`;
 }
 
-const CHANNEL_IDS: Record<string, string> = {
-  "#ops": process.env.SLACK_CHANNEL_OPS ?? "",
-  "#content": process.env.SLACK_CHANNEL_CONTENT ?? "",
-  "#dev": process.env.SLACK_CHANNEL_DEV ?? "",
-  "#trading": process.env.SLACK_CHANNEL_TRADING ?? "",
-  "#roblox": process.env.SLACK_CHANNEL_ROBLOX ?? "",
+const CHANNEL_ENV_VARS: Record<string, string> = {
+  "#ops": "SLACK_CHANNEL_OPS",
+  "#content": "SLACK_CHANNEL_CONTENT",
+  "#dev": "SLACK_CHANNEL_DEV",
+  "#trading": "SLACK_CHANNEL_TRADING",
+  "#roblox": "SLACK_CHANNEL_ROBLOX",
 };
 
-export const SLACK_CHANNELS = Object.keys(CHANNEL_IDS);
+export const SLACK_CHANNELS = Object.keys(CHANNEL_ENV_VARS);
 
-export async function resolveChannelId(channelName: string): Promise<string | null> {
-  // Try env var first (fastest)
-  if (CHANNEL_IDS[channelName]) return CHANNEL_IDS[channelName];
+interface SlackChannelListBody {
+  ok: boolean;
+  channels?: Array<{ id: string; name: string }>;
+  response_metadata?: { next_cursor?: string };
+  error?: string;
+  needed?: string;
+  provided?: string;
+}
 
-  // Fall back to conversations.list lookup
+export class SlackLookupError extends Error {
+  code?: string;
+  needed?: string;
+
+  constructor(message: string, details: { code?: string; needed?: string } = {}) {
+    super(message);
+    this.name = "SlackLookupError";
+    this.code = details.code;
+    this.needed = details.needed;
+  }
+}
+
+export function slackChannelEnvVar(channelName: string): string | null {
+  return CHANNEL_ENV_VARS[channelName] ?? null;
+}
+
+function configuredChannelId(channelName: string): string {
+  const envVar = slackChannelEnvVar(channelName);
+  return envVar ? process.env[envVar] ?? "" : "";
+}
+
+function ensureSlackToken() {
+  if (!process.env.SLACK_BOT_TOKEN) {
+    throw new SlackLookupError("Slack bot token is not configured. Set SLACK_BOT_TOKEN.");
+  }
+}
+
+function slackApiError(
+  action: string,
+  data: { error?: string; needed?: string },
+): SlackLookupError {
+  const code = data.error ?? "unknown_error";
+  const needed = data.needed ? ` Needed scope: ${data.needed}.` : "";
+  return new SlackLookupError(`Slack ${action} failed: ${code}.${needed}`, {
+    code,
+    needed: data.needed,
+  });
+}
+
+async function findChannelIdByName(
+  channelName: string,
+  type: "public_channel" | "private_channel",
+): Promise<string | null> {
   const name = channelName.replace(/^#/, "");
   let cursor: string | undefined;
 
   for (let page = 0; page < 5; page++) {
     const params = new URLSearchParams({
       exclude_archived: "true",
-      types: "public_channel,private_channel",
+      types: type,
       limit: "200",
     });
     if (cursor) params.set("cursor", cursor);
@@ -48,18 +95,42 @@ export async function resolveChannelId(channelName: string): Promise<string | nu
       headers: { Authorization: slackAuthHeader() },
       next: { revalidate: 3600 },
     });
-    const data = (await res.json()) as {
-      ok: boolean;
-      channels: Array<{ id: string; name: string }>;
-      response_metadata?: { next_cursor?: string };
-    };
-    if (!data.ok) return null;
-    const match = data.channels.find((c) => c.name === name);
+    const data = (await res.json()) as SlackChannelListBody;
+
+    if (!data.ok) throw slackApiError(`channel lookup for ${channelName}`, data);
+
+    const match = data.channels?.find((c) => c.name === name);
     if (match) return match.id;
+
     cursor = data.response_metadata?.next_cursor;
     if (!cursor) break;
   }
+
   return null;
+}
+
+export async function resolveChannelId(channelName: string): Promise<string | null> {
+  // Try env var first (fastest)
+  const configuredId = configuredChannelId(channelName);
+  if (configuredId) return configuredId;
+
+  ensureSlackToken();
+
+  const publicChannelId = await findChannelIdByName(channelName, "public_channel");
+  if (publicChannelId) return publicChannelId;
+
+  try {
+    return await findChannelIdByName(channelName, "private_channel");
+  } catch (error) {
+    if (error instanceof SlackLookupError && error.code === "missing_scope") {
+      const envVar = slackChannelEnvVar(channelName) ?? "SLACK_CHANNEL_*";
+      throw new SlackLookupError(
+        `Channel ${channelName} was not found in public channels, and private channel lookup is unavailable. Set ${envVar} to the channel ID or add the ${error.needed ?? "groups:read"} Slack scope.`,
+        { code: error.code, needed: error.needed },
+      );
+    }
+    throw error;
+  }
 }
 
 export async function getChannelHistory(
@@ -77,8 +148,10 @@ export async function getChannelHistory(
     ok: boolean;
     messages?: SlackMessage[];
     error?: string;
+    needed?: string;
   };
-  if (!data.ok || !data.messages) return [];
+  if (!data.ok) throw slackApiError("channel history lookup", data);
+  if (!data.messages) return [];
   return data.messages;
 }
 
