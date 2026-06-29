@@ -15,6 +15,7 @@ interface Workspace {
 
 export default function FilesPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspacesLoading, setWorkspacesLoading] = useState(true);
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
@@ -23,12 +24,12 @@ export default function FilesPage() {
     fetch("/api/files/workspaces")
       .then((res) => res.json())
       .then((data) => {
-        setWorkspaces(data.workspaces || []);
-        if (data.workspaces.length > 0) {
-          setSelectedWorkspace(data.workspaces[0].id);
-        }
+        const ws: Workspace[] = data.workspaces || [];
+        setWorkspaces(ws);
+        if (ws.length > 0) setSelectedWorkspace(ws[0].id);
       })
-      .catch(() => setWorkspaces([]));
+      .catch(() => setWorkspaces([]))
+      .finally(() => setWorkspacesLoading(false));
   }, []);
 
   const handleWorkspaceSelect = (workspaceId: string) => {
@@ -92,7 +93,13 @@ export default function FilesPage() {
             Workspaces
           </p>
 
-          {workspaces.map((workspace) => {
+          {workspacesLoading ? (
+            <div style={{ padding: "12px 16px", fontSize: "12px", color: "var(--text-muted)" }}>Loading...</div>
+          ) : workspaces.length === 0 ? (
+            <div style={{ padding: "12px 16px", fontSize: "12px", color: "var(--text-muted)" }}>
+              No workspaces configured. Set OPENCLAW_WORKSPACE in your environment.
+            </div>
+          ) : workspaces.map((workspace) => {
             const isSelected = selectedWorkspace === workspace.id;
             return (
               <button
@@ -112,7 +119,7 @@ export default function FilesPage() {
                   transition: "all 120ms ease",
                 }}
                 onMouseEnter={(e) => {
-                  if (!isSelected) e.currentTarget.style.background = "var(--surface-hover, rgba(255,255,255,0.05))";
+                  if (!isSelected) e.currentTarget.style.background = "var(--surface-hover, rgba(255,255,255,0.08))";
                 }}
                 onMouseLeave={(e) => {
                   if (!isSelected) e.currentTarget.style.background = "transparent";
@@ -124,7 +131,7 @@ export default function FilesPage() {
                     style={{
                       fontFamily: "var(--font-heading)",
                       fontSize: "13px",
-                      fontWeight: isSelected ? 600 : 400,
+                      fontWeight: isSelected ? 600 : 500,
                       color: isSelected ? "var(--accent)" : "var(--text-primary)",
                       whiteSpace: "nowrap",
                       overflow: "hidden",

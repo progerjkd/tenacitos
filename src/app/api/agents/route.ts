@@ -51,7 +51,15 @@ export async function GET() {
   try {
     const configPath =
       (process.env.OPENCLAW_DIR || "/root/.openclaw") + "/openclaw.json";
-    const config = JSON.parse(readFileSync(configPath, "utf-8"));
+    const rawConfig = (() => {
+      try {
+        return JSON.parse(readFileSync(configPath, "utf-8"));
+      } catch {
+        return null;
+      }
+    })();
+    if (!rawConfig) return NextResponse.json({ agents: [] });
+    const config = rawConfig;
 
     // Fetch live cron state from gateway (best-effort; graceful if gateway is down)
     let cronJobs: CronListResult["jobs"] = [];
