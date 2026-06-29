@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // Cache weather data for 10 minutes
-let cache: { data: unknown; ts: number; city: string } | null = null;
+const cache = new Map<string, { data: unknown; ts: number }>();
 const CACHE_DURATION = 10 * 60 * 1000;
 
 const WMO_CODES: Record<number, { label: string; emoji: string }> = {
@@ -54,11 +54,6 @@ async function geolocateIp(ip: string): Promise<{ lat: number; lon: number; city
 }
 
 export async function GET(request: NextRequest) {
-  // Return cache if valid
-  if (cache && Date.now() - cache.ts < CACHE_DURATION) {
-    return NextResponse.json(cache.data);
-  }
-
   // Get client IP
   const ip =
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
@@ -71,6 +66,13 @@ export async function GET(request: NextRequest) {
   const lon = geo?.lon ?? -79.4163;
   const city = geo?.city ?? 'Unknown';
   const timezone = geo?.timezone ?? 'America/Toronto';
+
+  // Return cached response for this IP/location
+  const cacheKey = ip + ':' + city;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_DURATION) {
+    return NextResponse.json(cached.data);
+  }
 
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=${encodeURIComponent(timezone)}&forecast_days=3`;
@@ -101,7 +103,7 @@ export async function GET(request: NextRequest) {
       updated: new Date().toISOString(),
     };
 
-    cache = { data, ts: Date.now(), city };
+    cache.set(cacheKey, { data, ts: Date.now() });
     return NextResponse.json(data);
   } catch (error) {
     console.error('[weather] Error:', error);

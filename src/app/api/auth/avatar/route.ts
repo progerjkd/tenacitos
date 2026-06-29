@@ -9,6 +9,10 @@ const AVATAR_DIR = process.env.OPENCLAW_DIR
 const AVATAR_PATH = path.join(AVATAR_DIR, "avatar.jpg");
 const AVATAR_URL = `/api/media${AVATAR_PATH}`;
 
+function isAuthenticated(request: NextRequest): boolean {
+  return request.cookies.get("mc_auth")?.value === process.env.AUTH_SECRET;
+}
+
 export async function GET() {
   if (!existsSync(AVATAR_PATH)) {
     return NextResponse.json({ url: null });
@@ -17,6 +21,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isAuthenticated(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
