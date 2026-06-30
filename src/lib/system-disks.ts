@@ -44,8 +44,21 @@ function parseSizeToGb(raw: string): number {
   }
 }
 
-function shouldIncludeDisk(mountpoint: string, fstype: string, total: number): boolean {
-  if (!mountpoint || EXCLUDE_FS.test(fstype) || EXCLUDE_MOUNT.test(mountpoint) || EXCLUDE_FILE_MOUNT.test(mountpoint)) return false;
+function isBindSubpathSource(source?: string): boolean {
+  return /\[[^\]]+\]$/.test(source ?? "");
+}
+
+function shouldIncludeDisk(mountpoint: string, fstype: string, total: number, source?: string): boolean {
+  if (
+    !mountpoint ||
+    isBindSubpathSource(source) ||
+    EXCLUDE_FS.test(fstype) ||
+    EXCLUDE_MOUNT.test(mountpoint) ||
+    EXCLUDE_FILE_MOUNT.test(mountpoint)
+  ) {
+    return false;
+  }
+
   return total > 0;
 }
 
@@ -62,7 +75,7 @@ export function parseFindmntDisks(output: string): DiskEntry[] {
 
     const [source, mountpoint, fstype, sizeRaw, usedRaw, availRaw, pctRaw] = parts;
     const total = parseSizeToGb(sizeRaw);
-    if (!shouldIncludeDisk(mountpoint, fstype, total)) continue;
+    if (!shouldIncludeDisk(mountpoint, fstype, total, source)) continue;
 
     disks.push({
       source,
@@ -116,9 +129,16 @@ export function parseDfDisks(output: string): DiskEntry[] {
     const parts = line.trim().split(/\s+/);
     if (parts.length < 7) continue;
 
-    const [source, sizeRaw, usedRaw, availRaw, pctRaw, fstype, mountpoint] = parts;
+    const [source] = parts;
+    const secondColumnIsSize = parseSizeToGb(parts[1]) > 0;
+    const fstype = secondColumnIsSize ? parts[5] : parts[1];
+    const sizeRaw = secondColumnIsSize ? parts[1] : parts[2];
+    const usedRaw = secondColumnIsSize ? parts[2] : parts[3];
+    const availRaw = secondColumnIsSize ? parts[3] : parts[4];
+    const pctRaw = secondColumnIsSize ? parts[4] : parts[5];
+    const mountpoint = parts.slice(6).join(" ");
     const total = parseSizeToGb(sizeRaw);
-    if (!shouldIncludeDisk(mountpoint, fstype, total)) continue;
+    if (!shouldIncludeDisk(mountpoint, fstype, total, source)) continue;
 
     disks.push({
       source,
@@ -132,4 +152,17 @@ export function parseDfDisks(output: string): DiskEntry[] {
   }
 
   return disks;
+}
+
+export function selectSystemDisks({
+  dfOutput,
+  findmntOutput,
+}: {
+  dfOutput?: string;
+  findmntOutput?: string;
+}): DiskEntry[] {
+  const dfDisks = dfOutput ? parseDfDisks(dfOutput) : [];
+  if (dfDisks.length > 0) return dfDisks;
+
+  return findmntOutput ? parseFindmntDisks(findmntOutput) : [];
 }
