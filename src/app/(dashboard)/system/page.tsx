@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Cpu, HardDrive, MemoryStick, Network, Server, ShieldCheck, RotateCw, Wifi, Monitor, Play, Square, X, Loader2, Terminal, ArrowDown, ArrowUp } from "lucide-react";
+import { groupDiskEntries } from "@/lib/system-disks";
+import type { DiskEntry } from "@/lib/system-disks";
 
 interface SystemdService {
   name: string;
@@ -27,16 +29,6 @@ interface FirewallRule {
   action: string;
   from: string;
   comment: string;
-}
-
-interface DiskEntry {
-  source?: string;
-  mountpoint: string;
-  fstype?: string;
-  total: number;
-  used: number;
-  free: number;
-  percent: number;
 }
 
 interface SystemData {
@@ -175,6 +167,9 @@ export default function SystemMonitorPage() {
   const cpuColor = systemData.cpu.usage < 60 ? "var(--success)" : systemData.cpu.usage < 85 ? "var(--warning)" : "var(--error)";
   const ramPercent = (systemData.ram.used / systemData.ram.total) * 100;
   const ramColor = ramPercent < 60 ? "var(--success)" : ramPercent < 85 ? "var(--warning)" : "var(--error)";
+  const diskGroups = groupDiskEntries(
+    systemData.disks && systemData.disks.length > 0 ? systemData.disks : [{ mountpoint: "/", ...systemData.disk }]
+  );
 
   const activeServices = systemData.systemd.filter((s) => s.status === "active").length;
 
@@ -295,10 +290,10 @@ export default function SystemMonitorPage() {
           </div>
 
           {/* Disks */}
-          {(systemData.disks && systemData.disks.length > 0 ? systemData.disks : [{ mountpoint: '/', ...systemData.disk }]).map((disk) => {
+          {diskGroups.map((disk) => {
             const dc = disk.percent < 60 ? "var(--success)" : disk.percent < 85 ? "var(--warning)" : "var(--error)";
             return (
-              <div key={disk.mountpoint} className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
+              <div key={`${disk.source ?? disk.mountpoint}-${disk.fstype ?? "disk"}`} className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg" style={{ backgroundColor: "var(--card-elevated)" }}>
@@ -321,6 +316,16 @@ export default function SystemMonitorPage() {
                 <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--card-elevated)" }}>
                   <div className="h-full transition-all duration-500" style={{ width: `${disk.percent}%`, backgroundColor: dc }} />
                 </div>
+                {disk.mountpoints.length > 1 && (
+                  <div className="mt-4 pt-4 space-y-2" style={{ borderTop: "1px solid var(--border)" }}>
+                    {disk.mountpoints.map((mountpoint) => (
+                      <div key={mountpoint} className="flex items-center justify-between gap-3 text-xs">
+                        <span className="font-mono truncate" style={{ color: "var(--text-primary)" }}>{mountpoint}</span>
+                        <span style={{ color: "var(--text-muted)" }}>{disk.percent.toFixed(0)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

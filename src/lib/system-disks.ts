@@ -8,6 +8,10 @@ export interface DiskEntry {
   percent: number;
 }
 
+export interface DiskGroup extends DiskEntry {
+  mountpoints: string[];
+}
+
 const EXCLUDE_FS = /^(tmpfs|devtmpfs|squashfs|sysfs|proc|devpts|cgroup|cgroup2|pstore|securityfs|efivarfs|hugetlbfs|mqueue|binfmt_misc|fusectl|configfs|ramfs|udev|sunrpc|autofs|nsfs|tracefs|debugfs|bpf)$/i;
 const EXCLUDE_MOUNT = /^(\/dev|\/sys|\/proc|\/run\/|\/snap\/)/;
 const EXCLUDE_FILE_MOUNT = /^\/etc\/(?:hosts|hostname|resolv\.conf)$/;
@@ -45,6 +49,10 @@ function shouldIncludeDisk(mountpoint: string, fstype: string, total: number): b
   return total > 0;
 }
 
+function normalizeDiskSource(source?: string): string | undefined {
+  return source?.replace(/\[[^\]]+\]$/, "");
+}
+
 export function parseFindmntDisks(output: string): DiskEntry[] {
   const disks: DiskEntry[] = [];
 
@@ -68,6 +76,37 @@ export function parseFindmntDisks(output: string): DiskEntry[] {
   }
 
   return disks;
+}
+
+export function groupDiskEntries(disks: DiskEntry[]): DiskGroup[] {
+  const groups = new Map<string, DiskGroup>();
+
+  for (const disk of disks) {
+    const source = normalizeDiskSource(disk.source);
+    const key = source ? `${source}:${disk.fstype ?? ""}` : `${disk.mountpoint}:${disk.total}:${disk.used}`;
+    const existing = groups.get(key);
+
+    if (!existing) {
+      groups.set(key, {
+        ...disk,
+        source,
+        mountpoints: [disk.mountpoint],
+      });
+      continue;
+    }
+
+    if (!existing.mountpoints.includes(disk.mountpoint)) {
+      existing.mountpoints.push(disk.mountpoint);
+    }
+
+    const existingDepth = existing.mountpoint.split("/").filter(Boolean).length;
+    const diskDepth = disk.mountpoint.split("/").filter(Boolean).length;
+    if (diskDepth < existingDepth) {
+      existing.mountpoint = disk.mountpoint;
+    }
+  }
+
+  return Array.from(groups.values());
 }
 
 export function parseDfDisks(output: string): DiskEntry[] {
