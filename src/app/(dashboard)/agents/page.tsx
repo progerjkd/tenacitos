@@ -38,6 +38,7 @@ interface Agent {
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"cards" | "org-chart">("cards");
 
   useEffect(() => {
@@ -50,9 +51,15 @@ export default function AgentsPage() {
     try {
       const res = await fetch("/api/agents");
       const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to load agents");
+        return;
+      }
       setAgents(data.agents || []);
-    } catch (error) {
-      console.error("Error fetching agents:", error);
+      setError(null);
+    } catch (err) {
+      console.error("Error fetching agents:", err);
+      setError("Network error — could not reach the agent API");
     } finally {
       setLoading(false);
     }
@@ -79,6 +86,17 @@ export default function AgentsPage() {
           <div className="animate-pulse text-lg" style={{ color: "var(--text-muted)" }}>
             Loading agents...
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8">
+        <div className="flex flex-col items-center justify-center min-h-[400px] gap-2">
+          <p style={{ color: "#ef4444", fontWeight: 600 }}>Failed to load agents</p>
+          <p style={{ color: "var(--text-muted)", fontSize: "14px" }}>{error}</p>
         </div>
       </div>
     );
@@ -143,6 +161,11 @@ export default function AgentsPage() {
 
       {/* Agents Grid */}
       {activeTab === "cards" && (
+      agents.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+          No agents configured
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {agents.map((agent) => (
           <div
@@ -363,6 +386,7 @@ export default function AgentsPage() {
           </div>
         ))}
       </div>
+      )
       )}
     </div>
   );
