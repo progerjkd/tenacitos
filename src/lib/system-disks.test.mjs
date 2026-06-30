@@ -52,3 +52,74 @@ test("parses root and OpenClaw data mount points from findmnt output", () => {
     },
   ]);
 });
+
+test("groups bind-mounted paths from the same backing disk into one tile", () => {
+  const { groupDiskEntries } = loadTypeScriptModule(path.join(__dirname, "system-disks.ts"));
+
+  assert.deepEqual(
+    groupDiskEntries([
+      {
+        source: "/dev/root",
+        mountpoint: "/",
+        fstype: "ext4",
+        total: 6.7,
+        used: 5.8,
+        free: 0.9,
+        percent: 87,
+      },
+      {
+        source: "/dev/nvme1n1",
+        mountpoint: "/opt/openclaw-data",
+        fstype: "ext4",
+        total: 29.4,
+        used: 20.7,
+        free: 8.7,
+        percent: 70,
+      },
+      {
+        source: "/dev/nvme1n1[/config]",
+        mountpoint: "/opt/openclaw-data/config",
+        fstype: "ext4",
+        total: 29.4,
+        used: 20.7,
+        free: 8.7,
+        percent: 70,
+      },
+      {
+        source: "/dev/nvme1n1[/workspace]",
+        mountpoint: "/opt/openclaw-data/workspace",
+        fstype: "ext4",
+        total: 29.4,
+        used: 20.7,
+        free: 8.7,
+        percent: 70,
+      },
+    ]),
+    [
+      {
+        source: "/dev/root",
+        mountpoint: "/",
+        mountpoints: ["/"],
+        fstype: "ext4",
+        total: 6.7,
+        used: 5.8,
+        free: 0.9,
+        percent: 87,
+      },
+      {
+        source: "/dev/nvme1n1",
+        mountpoint: "/opt/openclaw-data",
+        mountpoints: [
+          "/opt/openclaw-data",
+          "/opt/openclaw-data/config",
+          "/opt/openclaw-data/workspace",
+        ],
+        fstype: "ext4",
+        total: 29.4,
+        used: 20.7,
+        free: 8.7,
+        percent: 70,
+      },
+    ]
+  );
+});
