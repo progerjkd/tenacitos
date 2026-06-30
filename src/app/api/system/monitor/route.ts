@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import os from "os";
-import { parseDfDisks, parseFindmntDisks } from "@/lib/system-disks";
+import { selectSystemDisks } from "@/lib/system-disks";
 import type { DiskEntry } from "@/lib/system-disks";
 
 const execAsync = promisify(exec);
@@ -89,17 +89,13 @@ export async function GET() {
     let diskFree = 0;
     let diskPercent = 0;
     try {
-      const { stdout } = await execAsync(
-        "findmnt -D -o SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL,USE% 2>/dev/null"
+      const { stdout: dfStdout } = await execAsync(
+        "df -hT 2>/dev/null || true"
       );
-      disks.push(...parseFindmntDisks(stdout));
-
-      if (disks.length === 0) {
-        const { stdout: dfStdout } = await execAsync(
-          "df -hT --output=source,size,used,avail,pcent,fstype,target 2>/dev/null"
-        );
-        disks.push(...parseDfDisks(dfStdout));
-      }
+      const { stdout: findmntStdout } = await execAsync(
+        "findmnt -D -o SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL,USE% 2>/dev/null || true"
+      );
+      disks.push(...selectSystemDisks({ dfOutput: dfStdout, findmntOutput: findmntStdout }));
 
       const primary = disks.find(d => d.mountpoint === '/') || disks[0];
       if (primary) {
