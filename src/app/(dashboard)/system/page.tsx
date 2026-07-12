@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Cpu, HardDrive, MemoryStick, Network, Server, ShieldCheck, RotateCw, Wifi, Monitor, Play, Square, X, Loader2, Terminal, ArrowDown, ArrowUp } from "lucide-react";
 import { groupDiskEntries } from "@/lib/system-disks";
 import type { DiskEntry } from "@/lib/system-disks";
+import { getDiskDisplayDetails, getSwapDisplay } from "@/lib/system-monitor-display";
 
 interface SystemdService {
   name: string;
@@ -271,18 +272,19 @@ export default function SystemMonitorPage() {
             <div className="h-2 rounded-full overflow-hidden mb-4" style={{ backgroundColor: "var(--card-elevated)" }}>
               <div className="h-full transition-all duration-500" style={{ width: `${ramPercent}%`, backgroundColor: ramColor }} />
             </div>
-            {systemData.swap && systemData.swap.total > 0 && (() => {
-              const swapColor = systemData.swap!.percent < 60 ? "var(--success)" : systemData.swap!.percent < 85 ? "var(--warning)" : "var(--error)";
+            {(() => {
+              const swap = getSwapDisplay(systemData.swap);
+              const swapColor = swap.percent < 60 ? "var(--success)" : swap.percent < 85 ? "var(--warning)" : "var(--error)";
               return (
                 <>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-                      Swap — {systemData.swap!.used.toFixed(1)}GB / {systemData.swap!.total.toFixed(1)}GB
+                      Swap — {swap.used.toFixed(1)}GB / {swap.total.toFixed(1)}GB
                     </span>
-                    <span className="text-sm font-bold" style={{ color: swapColor }}>{systemData.swap!.percent.toFixed(0)}%</span>
+                    <span className="text-sm font-bold" style={{ color: swapColor }}>{swap.percent.toFixed(0)}%</span>
                   </div>
                   <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--card-elevated)" }}>
-                    <div className="h-full transition-all duration-500" style={{ width: `${systemData.swap!.percent}%`, backgroundColor: swapColor }} />
+                    <div className="h-full transition-all duration-500" style={{ width: `${swap.percent}%`, backgroundColor: swapColor }} />
                   </div>
                 </>
               );
@@ -292,6 +294,7 @@ export default function SystemMonitorPage() {
           {/* Disks */}
           {diskGroups.map((disk) => {
             const dc = disk.percent < 60 ? "var(--success)" : disk.percent < 85 ? "var(--warning)" : "var(--error)";
+            const details = getDiskDisplayDetails(disk);
             return (
               <div key={`${disk.source ?? disk.mountpoint}-${disk.fstype ?? "disk"}`} className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
                 <div className="flex items-center justify-between mb-4">
@@ -300,14 +303,15 @@ export default function SystemMonitorPage() {
                       <HardDrive className="w-5 h-5" style={{ color: dc }} />
                     </div>
                     <div>
-                      <h3 className="font-semibold" style={{ color: "var(--text-primary)" }}>
-                        Disk <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{disk.mountpoint}</span>
-                      </h3>
-                      <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                        {disk.used}GB / {disk.total}GB
-                        {disk.source && (
-                          <span className="font-mono" style={{ color: "var(--text-muted)" }}> · {disk.source}{disk.fstype ? ` (${disk.fstype})` : ""}</span>
-                        )}
+                      <h3 className="font-semibold" style={{ color: "var(--text-primary)" }}>Disk</h3>
+                      <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+                        <span>Device</span>
+                        <span className="font-mono" style={{ color: "var(--text-primary)" }}>{details.device}</span>
+                        <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{details.filesystem}</span>
+                      </p>
+                      <p className="flex flex-wrap items-baseline gap-x-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+                        <span>Mount</span>
+                        <span className="font-mono" style={{ color: "var(--text-primary)" }}>{details.mountpoint}</span>
                       </p>
                     </div>
                   </div>
@@ -315,6 +319,10 @@ export default function SystemMonitorPage() {
                 </div>
                 <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--card-elevated)" }}>
                   <div className="h-full transition-all duration-500" style={{ width: `${disk.percent}%`, backgroundColor: dc }} />
+                </div>
+                <div className="mt-3 flex justify-between gap-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  <span>{disk.used}GB used of {disk.total}GB</span>
+                  <span>{disk.free}GB free</span>
                 </div>
                 {disk.mountpoints.length > 1 && (
                   <div className="mt-4 pt-4 space-y-2" style={{ borderTop: "1px solid var(--border)" }}>
