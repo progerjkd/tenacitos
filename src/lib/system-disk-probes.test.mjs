@@ -45,3 +45,16 @@ test("maps container disk probes to their host mount points", () => {
     "/opt/openclaw-data"
   );
 });
+
+test("keeps probe paths as literal df arguments", () => {
+  const { getSystemDiskProbeArgs } = loadTypeScriptModule(
+    path.join(__dirname, "system-disk-probes.ts")
+  );
+
+  assert.deepEqual(getSystemDiskProbeArgs(["/host-root-probe", "$(touch /tmp/pwned)"]), [
+    "-hT",
+    "--",
+    "/host-root-probe",
+    "$(touch /tmp/pwned)",
+  ]);
+});

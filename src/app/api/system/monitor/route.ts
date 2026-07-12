@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import os from "os";
 import { selectSystemDisks } from "@/lib/system-disks";
 import type { DiskEntry } from "@/lib/system-disks";
-import { remapSystemDiskMountpoint } from "@/lib/system-disk-probes";
+import { getSystemDiskProbeArgs, remapSystemDiskMountpoint } from "@/lib/system-disk-probes";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Services monitored per backend
 const SYSTEMD_SERVICES = ["mission-control"];
@@ -96,8 +97,9 @@ export async function GET() {
           ? [{ path: process.env.SYSTEM_DATA_DISK_PROBE, mountpoint: "/opt/openclaw-data" }]
           : []),
       ];
-      const { stdout: dfStdout } = await execAsync(
-        `df -hT ${diskProbes.map(({ path }) => JSON.stringify(path)).join(" ")} 2>/dev/null || true`
+      const { stdout: dfStdout } = await execFileAsync(
+        "df",
+        getSystemDiskProbeArgs(diskProbes.map(({ path }) => path))
       );
       const { stdout: findmntStdout } = await execAsync(
         "findmnt -D -o SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL,USE% 2>/dev/null || true"
