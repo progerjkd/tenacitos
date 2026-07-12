@@ -3,6 +3,10 @@ export interface SystemDiskProbe {
   mountpoint: string;
 }
 
+export function getSystemDiskProbeArgs(paths: string[]): string[] {
+  return ["-hT", "--", ...paths];
+}
+
 interface DiskEntry {
   mountpoint: string;
 }
