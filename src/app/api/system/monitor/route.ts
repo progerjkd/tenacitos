@@ -4,6 +4,7 @@ import { promisify } from "util";
 import os from "os";
 import { selectSystemDisks } from "@/lib/system-disks";
 import type { DiskEntry } from "@/lib/system-disks";
+import { remapSystemDiskMountpoint } from "@/lib/system-disk-probes";
 
 const execAsync = promisify(exec);
 
@@ -89,13 +90,23 @@ export async function GET() {
     let diskFree = 0;
     let diskPercent = 0;
     try {
+      const diskProbes = [
+        { path: process.env.SYSTEM_ROOT_DISK_PROBE || "/", mountpoint: "/" },
+        ...(process.env.SYSTEM_DATA_DISK_PROBE
+          ? [{ path: process.env.SYSTEM_DATA_DISK_PROBE, mountpoint: "/opt/openclaw-data" }]
+          : []),
+      ];
       const { stdout: dfStdout } = await execAsync(
-        "df -hT 2>/dev/null || true"
+        `df -hT ${diskProbes.map(({ path }) => JSON.stringify(path)).join(" ")} 2>/dev/null || true`
       );
       const { stdout: findmntStdout } = await execAsync(
         "findmnt -D -o SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL,USE% 2>/dev/null || true"
       );
-      disks.push(...selectSystemDisks({ dfOutput: dfStdout, findmntOutput: findmntStdout }));
+      disks.push(
+        ...selectSystemDisks({ dfOutput: dfStdout, findmntOutput: findmntStdout }).map((disk) =>
+          remapSystemDiskMountpoint(disk, diskProbes)
+        )
+      );
 
       const primary = disks.find(d => d.mountpoint === '/') || disks[0];
       if (primary) {
