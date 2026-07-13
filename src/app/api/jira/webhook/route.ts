@@ -1,19 +1,57 @@
 /**
  * POST /api/jira/webhook
- * Receives Jira automation webhook events and triggers auto-dispatch for
- * issues that land in "To Do" status.
+ * Receives Jira webhook events and triggers auto-dispatch for issues that
+ * land in "To Do" status. Also relays "NEEDS INPUT:" comments (posted by the
+ * dispatched agent when it's blocked) straight to Slack + the notification
+ * bell.
  *
- * Configure in Jira: Project Settings → Automation → Webhook
- * URL: https://<your-domain>/api/jira/webhook
- * Header: X-Jira-Webhook-Secret: <JIRA_WEBHOOK_SECRET env var>
+ * Provisioned as a single native Jira webhook (Jira Settings → System →
+ * WebHooks, id 1 on neuralops.atlassian.net as of 2026-07-13 — registered via
+ * POST /rest/webhooks/1.0/webhook, not a manual Automation rule):
+ *   events: jira:issue_created, jira:issue_updated, comment_created
+ *   jqlFilter: project = NEURALOPS
+ *   url: https://mc.neuralops.ca/api/jira/webhook
  *
- * Supported events: issue_created, issue_updated
+ * Native webhooks can't send custom headers, so JIRA_WEBHOOK_SECRET is NOT
+ * enforced for this delivery path — the only protection is the security
+ * group rule (openclaw-terraform/main.tf) restricting inbound 443 to
+ * Atlassian's published Jira egress CIDRs. If header-based auth is required
+ * later, switch to a Jira Automation "Send web request" action instead,
+ * which does support the X-Jira-Webhook-Secret header this route still
+ * checks when present.
+ *
+ * Supported events: issue_created, issue_updated, plus any request carrying
+ * a `comment.body` field (comment-added relay, event name not checked).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSingleIssue } from "@/lib/jira";
 import { sendSlackMessage } from "@/lib/slack";
+import { createNotification } from "@/lib/notifications";
 
 const NOTIFY_CHANNEL = "#dev";
+const NEEDS_INPUT_MARKER = /needs input/i;
+
+// Jira Cloud webhook payloads normally send comment.body as a plain string,
+// but issue comment bodies can also arrive in Atlassian Document Format
+// (nested content[].content[].text) — handle both defensively.
+function extractPlainText(body: unknown): string {
+  if (typeof body === "string") return body;
+  if (body && typeof body === "object") {
+    const texts: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        node.forEach(walk);
+      } else if (node && typeof node === "object") {
+        const obj = node as Record<string, unknown>;
+        if (typeof obj.text === "string") texts.push(obj.text);
+        if (obj.content) walk(obj.content);
+      }
+    };
+    walk(body);
+    return texts.join(" ");
+  }
+  return "";
+}
 
 interface JiraWebhookPayload {
   webhookEvent?: string;
@@ -25,6 +63,10 @@ interface JiraWebhookPayload {
       priority?: { name: string };
       issuetype?: { name: string };
     };
+  };
+  comment?: {
+    body?: unknown;
+    author?: { displayName?: string };
   };
   changelog?: {
     items?: Array<{
@@ -61,6 +103,30 @@ export async function POST(request: NextRequest) {
 
   if (!issueKey) {
     return NextResponse.json({ skipped: true, reason: "no issue key" });
+  }
+
+  // Comment-added relay: an agent stuck mid-task posts a Jira comment starting
+  // with "NEEDS INPUT:" — forward it to Slack + the in-app notification bell
+  // immediately, instead of it sitting silently on the ticket.
+  const commentBody = extractPlainText(payload.comment?.body);
+  if (commentBody && NEEDS_INPUT_MARKER.test(commentBody)) {
+    const issueUrl = `${(process.env.JIRA_BASE_URL ?? "").replace(/\/$/, "")}/browse/${issueKey}`;
+    const author = payload.comment?.author?.displayName ?? "agent";
+
+    await sendSlackMessage(
+      NOTIFY_CHANNEL,
+      `❓ *${issueKey}* needs your input (from ${author}):\n>${commentBody}\n<${issueUrl}|Reply in Jira>`,
+    ).catch(() => null);
+
+    await createNotification({
+      title: `${issueKey} needs input`,
+      message: commentBody.slice(0, 200),
+      type: "warning",
+      link: `/jira`,
+      metadata: { issueKey, issueUrl },
+    }).catch(() => null);
+
+    return NextResponse.json({ ok: true, issueKey, event: "needs_input_relayed" });
   }
 
   // Only act on issue_created or status transitions into "To Do"
