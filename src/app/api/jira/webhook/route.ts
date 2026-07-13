@@ -12,13 +12,12 @@
  *   jqlFilter: project = NEURALOPS
  *   url: https://mc.neuralops.ca/api/jira/webhook
  *
- * Native webhooks can't send custom headers, so JIRA_WEBHOOK_SECRET is NOT
- * enforced for this delivery path — the only protection is the security
- * group rule (openclaw-terraform/main.tf) restricting inbound 443 to
- * Atlassian's published Jira egress CIDRs. If header-based auth is required
- * later, switch to a Jira Automation "Send web request" action instead,
- * which does support the X-Jira-Webhook-Secret header this route still
- * checks when present.
+ * Native webhooks can't send custom headers, so if JIRA_WEBHOOK_SECRET is
+ * set, this route also accepts it as a `?secret=` query param — append
+ * `?secret=<value>` to the native webhook's URL when setting the env var.
+ * Until then the only protection is the security group rule
+ * (openclaw-terraform/main.tf) restricting inbound 443 to Atlassian's
+ * published Jira egress CIDRs.
  *
  * Supported events: issue_created, issue_updated, plus any request carrying
  * a `comment.body` field (comment-added relay, event name not checked).
@@ -29,7 +28,7 @@ import { sendSlackMessage } from "@/lib/slack";
 import { createNotification } from "@/lib/notifications";
 
 const NOTIFY_CHANNEL = "#dev";
-const NEEDS_INPUT_MARKER = /needs input/i;
+const NEEDS_INPUT_MARKER = /^needs input:/i;
 
 // Jira Cloud webhook payloads normally send comment.body as a plain string,
 // but issue comment bodies can also arrive in Atlassian Document Format
@@ -81,7 +80,10 @@ function validateSecret(request: NextRequest): boolean {
   const secret = process.env.JIRA_WEBHOOK_SECRET;
   if (!secret) return true; // no secret configured → open (dev mode)
   const header = request.headers.get("x-jira-webhook-secret");
-  return header === secret;
+  if (header === secret) return true;
+  // Native Jira webhooks can't set custom headers, so also accept the
+  // secret as a query param for that delivery path.
+  return request.nextUrl.searchParams.get("secret") === secret;
 }
 
 export const dynamic = "force-dynamic";
@@ -108,7 +110,7 @@ export async function POST(request: NextRequest) {
   // Comment-added relay: an agent stuck mid-task posts a Jira comment starting
   // with "NEEDS INPUT:" — forward it to Slack + the in-app notification bell
   // immediately, instead of it sitting silently on the ticket.
-  const commentBody = extractPlainText(payload.comment?.body);
+  const commentBody = extractPlainText(payload.comment?.body).trim();
   if (commentBody && NEEDS_INPUT_MARKER.test(commentBody)) {
     const issueUrl = `${(process.env.JIRA_BASE_URL ?? "").replace(/\/$/, "")}/browse/${issueKey}`;
     const author = payload.comment?.author?.displayName ?? "agent";
