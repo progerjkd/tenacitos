@@ -48,7 +48,7 @@ function IssueCard({
 
   const handleDispatch = async () => {
     setDispatching(true);
-    const message = `Work on ${issue.key}: ${issue.summary}\n\nJira: ${issue.url}\n\nCurrent status: ${issue.status}. Please pick this up, implement the changes needed, and move the issue to Done when complete.`;
+    const message = `Work on ${issue.key}: ${issue.summary}\n\nJira: ${issue.url}\n\nCurrent status: ${issue.status}. Please pick this up, implement the changes needed, and move the issue to Done when complete.\n\nWhile working: post a short Jira comment after each meaningful step. If you're blocked or need a decision from a human, add a comment starting with "NEEDS INPUT:" followed by exactly what you need, then pause and wait — that marker is monitored and will page a human.`;
     try {
       const res = await fetch("/api/agents/dispatch", {
         method: "POST",

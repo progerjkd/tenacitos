@@ -44,6 +44,12 @@ async function dispatchToAgent(issue: JiraIssue, agentSlug: string): Promise<boo
     `Priority: ${issue.priority} | Type: ${issue.issuetype}`,
     ``,
     `Please implement the changes described in this ticket, then move the issue to Done when complete.`,
+    ``,
+    `While working:`,
+    `- Post a short comment on this Jira issue after each meaningful step, not just at the end.`,
+    `- If you're blocked or need a decision from a human to proceed, add a Jira comment starting`,
+    `  with the literal text "NEEDS INPUT:" followed by exactly what you need — then pause and`,
+    `  wait rather than guessing. That marker is monitored and will page a human.`,
   ].join("\n");
 
   const sessionKey = `agent:${agentSlug}:main`;
