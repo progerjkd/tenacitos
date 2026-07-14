@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Kanban, RefreshCw, ExternalLink, AlertCircle, Send } from "lucide-react";
-import { JIRA_COLUMNS, jiraBoardUrl, priorityIcon, type JiraIssue, type JiraStatus } from "@/lib/jira";
+import { JIRA_COLUMNS, priorityIcon, type JiraIssue, type JiraStatus } from "@/lib/jira";
 
 const COLUMN_COLORS: Record<JiraStatus, string> = {
   "To Do": "#6b7280",
@@ -276,7 +276,7 @@ export default function JiraPage() {
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={jiraBoardUrl("NEURALOPS")}
+            href="https://neuralops.atlassian.net/jira/software/projects/NEURALOPS/boards/1"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-sm"
