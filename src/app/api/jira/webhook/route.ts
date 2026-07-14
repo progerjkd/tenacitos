@@ -79,7 +79,10 @@ interface JiraWebhookPayload {
 
 function validateSecret(request: NextRequest): boolean {
   const secret = process.env.JIRA_WEBHOOK_SECRET;
-  if (!secret) return true; // no secret configured → open (dev mode)
+  // Fail closed: this route is exempt from the mc_auth cookie gate (see
+  // proxy.ts), so JIRA_WEBHOOK_SECRET is the only thing standing between it
+  // and an unauthenticated POST that can trigger runAutoDispatch.
+  if (!secret) return false;
   const header = request.headers.get("x-jira-webhook-secret");
   if (header === secret) return true;
   // Native Jira webhooks can't set custom headers, so also accept the
