@@ -24,6 +24,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSingleIssue } from "@/lib/jira";
+import { runAutoDispatch } from "@/lib/jira-dispatch";
 import { sendSlackMessage } from "@/lib/slack";
 import { createNotification } from "@/lib/notifications";
 
@@ -155,32 +156,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ skipped: true, reason: `status is "${issue.status}", not "To Do"` });
   }
 
-  // Trigger auto-dispatch for this issue
-  const baseUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
-  const dispatchRes = await fetch(`${baseUrl}/api/jira/auto-dispatch`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ issueKey }),
-  });
-
-  const dispatchData = (await dispatchRes.json()) as {
-    summary?: { dispatched: number; errors: number };
-    error?: string;
-  };
-
-  if (!dispatchRes.ok || dispatchData.error) {
-    // Notify Slack about the failure
+  // Trigger auto-dispatch for this issue. Called in-process rather than via
+  // an internal HTTP fetch to /api/jira/auto-dispatch: a same-origin fetch
+  // would re-enter proxy.ts, which has no mc_auth cookie to check for a
+  // server-to-server call and would reject it with 401.
+  try {
+    const result = await runAutoDispatch({ issueKey });
+    return NextResponse.json({
+      ok: true,
+      issueKey,
+      event,
+      dispatch: result.summary,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "auto-dispatch failed";
     await sendSlackMessage(
       NOTIFY_CHANNEL,
-      `⚠️ Jira webhook received for *${issueKey}* but auto-dispatch failed: ${dispatchData.error ?? "unknown error"}`,
+      `⚠️ Jira webhook received for *${issueKey}* but auto-dispatch failed: ${msg}`,
     ).catch(() => null);
-    return NextResponse.json({ ok: false, error: dispatchData.error }, { status: 502 });
+    return NextResponse.json({ ok: false, error: msg }, { status: 502 });
   }
-
-  return NextResponse.json({
-    ok: true,
-    issueKey,
-    event,
-    dispatch: dispatchData.summary,
-  });
 }
