@@ -130,7 +130,7 @@ export function priorityIcon(priority: string): string {
 }
 
 export function jiraBoardUrl(project: string): string {
-  return `${jiraBase()}/jira/software/projects/${project}/boards`;
+  return `${jiraBase()}/jira/software/projects/${project}/boards/1`;
 }
 
 export async function getSingleIssue(issueKey: string): Promise<JiraIssue | null> {
