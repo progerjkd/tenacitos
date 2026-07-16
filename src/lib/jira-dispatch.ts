@@ -23,7 +23,7 @@ import { callGateway } from "@/lib/gateway";
 import { createNotification } from "@/lib/notifications";
 
 const PROJECT = "NEURALOPS";
-const DEFAULT_AGENT = "main";
+const DEFAULT_AGENT = "sage";
 const NOTIFY_CHANNEL = "#dev";
 
 export class IssueNotFoundError extends Error {
@@ -56,20 +56,20 @@ export interface AutoDispatchOutcome {
 
 async function dispatchToAgent(issue: JiraIssue, agentSlug: string): Promise<boolean> {
   const message = [
-    `Work on ${issue.key}: ${issue.summary}`,
+    `New ticket ready for triage: ${issue.key} — ${issue.summary}`,
     ``,
     `Jira: ${issue.url}`,
     `Priority: ${issue.priority} | Type: ${issue.issuetype}`,
     ``,
-    `Please implement the changes described in this ticket, then move the issue to Done when complete.`,
-    ``,
-    `While working:`,
-    `- Post a short comment on this Jira issue after each meaningful step, not just at the end.`,
-    `- If you're blocked or need a decision from a human to proceed, add a Jira comment starting`,
-    `  with the literal text "NEEDS INPUT:" followed by exactly what you need — then pause and`,
-    `  wait rather than guessing. That marker is monitored and will page a human.`,
+    `It's already been moved to In Progress and a #dev notification has gone out.`,
+    `Read the ticket, write a scoped brief, and assign it to the right specialist per your`,
+    `usual workflow. Track it through to done — checkpoints, review, and pinging Roger are`,
+    `on you from here.`,
   ].join("\n");
 
+  // Always targets Sage's own persistent session (not a per-ticket one) — Sage is the
+  // one long-lived agent in this pipeline; it fans work out to isolated specialist
+  // sessions itself via its native subagent (allowAgents) capability.
   const sessionKey = `agent:${agentSlug}:main`;
   await callGateway("sessions.send", { key: sessionKey, message, timeoutMs: 0 });
   return true;
@@ -141,11 +141,11 @@ export async function runAutoDispatch(
       // 3. Post comment on Jira issue
       await addJiraComment(
         issue.key,
-        `🤖 OpenClaw agent dispatched to work on this issue.\nAgent: ${agentSlug} | Session: ${issue.key.toLowerCase()}\nAuto-dispatched via TenacitOS Mission Control.`,
+        `🤖 Sent to ${agentSlug} for triage and assignment.\nAuto-dispatched via TenacitOS Mission Control.`,
       ).catch(() => null);
 
       // 4. Send Slack notification
-      const slackText = `🤖 *${issue.key}* dispatched to agent \`${agentSlug}\`\n*${issue.summary}*\n<${issue.url}|View in Jira>`;
+      const slackText = `🤖 *${issue.key}* sent to \`${agentSlug}\` for triage\n*${issue.summary}*\n<${issue.url}|View in Jira>`;
       const slackResult = await sendSlackMessage(NOTIFY_CHANNEL, slackText);
       result.slackNotified = slackResult.ok;
 
