@@ -53,3 +53,6 @@ next-env.d.ts
 
 # backup files
 *.bak
+
+# Claude Code session data (worktrees, local settings)
+.claude/
