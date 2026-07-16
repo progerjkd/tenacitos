@@ -1,54 +1,9 @@
 import { NextResponse } from "next/server";
 import { readFileSync, statSync } from "fs";
 import { join } from "path";
+import { agentDefBySlug } from "@/lib/agents-config";
 
 export const dynamic = "force-dynamic";
-
-const AGENT_CONFIG = {
-  main: { emoji: "🤖", color: "#ff6b35", name: process.env.NEXT_PUBLIC_AGENT_NAME || "NeuralOps", role: "Boss" },
-  academic: {
-    emoji: "🎓",
-    color: "#4ade80",
-    name: "Profe",
-    role: "Teacher",
-  },
-  infra: {
-    emoji: "🔧",
-    color: "#f97316",
-    name: "Infra",
-    role: "DevOps",
-  },
-  studio: {
-    emoji: "🎬",
-    color: "#a855f7",
-    name: "Studio",
-    role: "Video Editor",
-  },
-  social: {
-    emoji: "📱",
-    color: "#ec4899",
-    name: "Social",
-    role: "Social Media",
-  },
-  linkedin: {
-    emoji: "💼",
-    color: "#0077b5",
-    name: "LinkedIn Pro",
-    role: "Professional",
-  },
-  devclaw: {
-    emoji: "👨‍💻",
-    color: "#8b5cf6",
-    name: "DevClaw",
-    role: "Developer",
-  },
-  freelance: {
-    emoji: "👨‍💻",
-    color: "#8b5cf6",
-    name: "DevClaw",
-    role: "Developer",
-  },
-};
 
 interface AgentSession {
   agentId: string;
@@ -189,33 +144,33 @@ export async function GET() {
     // Try gateway first, fallback to file-based
     const gatewayStatus = await getAgentStatusFromGateway();
 
-    const agents = config.agents.list.map((agent: { id: string; name?: string; workspace: string }) => {
-      const agentInfo = AGENT_CONFIG[agent.id as keyof typeof AGENT_CONFIG] || {
-        emoji: "🤖",
-        color: "#666",
-        name: agent.name || agent.id,
-        role: "Agent",
-      };
+    const agents = config.agents.list.map(
+      (agent: {
+        id: string;
+        name?: string;
+        workspace: string;
+        ui?: { emoji?: string; color?: string };
+      }) => {
+        // Same fallback chain as /api/agents: openclaw.json ui overrides, then AGENT_DEFS
+        const def = agentDefBySlug(agent.id);
 
-      // Get status from gateway, or fallback to files
-      let status = gatewayStatus[agent.id];
-      if (!status) {
-        status = getAgentStatusFromFiles(agent.id, agent.workspace);
-      }
+        // Get status from gateway, or fallback to files
+        let status = gatewayStatus[agent.id];
+        if (!status) {
+          status = getAgentStatusFromFiles(agent.id, agent.workspace);
+        }
 
-      // Map freelance -> devclaw for canvas compatibility
-      const canvasId = agent.id === "freelance" ? "devclaw" : agent.id;
-
-      return {
-        id: canvasId,
-        name: agentInfo.name,
-        emoji: agentInfo.emoji,
-        color: agentInfo.color,
-        role: agentInfo.role,
-        currentTask: status.currentTask,
-        isActive: status.isActive,
-      };
-    });
+        return {
+          id: agent.id,
+          name: agent.name ?? def?.name ?? agent.id,
+          emoji: agent.ui?.emoji ?? def?.emoji ?? "🤖",
+          color: agent.ui?.color ?? def?.color ?? "#666666",
+          role: def?.role ?? "Agent",
+          currentTask: status.currentTask,
+          isActive: status.isActive,
+        };
+      },
+    );
 
     return NextResponse.json({ agents });
   } catch (error) {

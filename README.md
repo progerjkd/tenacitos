@@ -17,7 +17,7 @@ A real-time dashboard and control center for [OpenClaw](https://openclaw.ai) AI 
 - **📁 File Browser** — Navigate workspace files with preview and in-browser editing
 - **🔎 Global Search** — Full-text search across memory and workspace files
 - **🔔 Notifications** — Real-time notification center with unread badge
-- **🏢 Office 3D** — Interactive 3D office with one desk per agent (React Three Fiber)
+- **🏢 Office 3D** — Holographic "NeuralOps HQ" with a live pod per agent and an in-world Jira board (React Three Fiber)
 - **📺 Terminal** — Read-only terminal for safe status commands
 - **🔐 Auth** — Password-protected with rate limiting and secure cookie
 
@@ -41,7 +41,7 @@ A real-time dashboard and control center for [OpenClaw](https://openclaw.ai) AI 
 
 ![System Monitor](./docs/screenshots/system.jpg)
 
-**Office 3D** — interactive 3D office with one voxel avatar per agent (React Three Fiber)
+**Office 3D** — holographic command deck with one pod per agent and the live NEURALOPS board (React Three Fiber)
 
 ![Office 3D](./docs/screenshots/office3d.jpg)
 
@@ -244,37 +244,13 @@ Each agent can define its own visual appearance in `openclaw.json`:
 }
 ```
 
-### Office 3D — agent positions
+### Office 3D — agents and board
 
-The 3D office has default positions for up to 6 agents. To customize positions, names, and colors for your own agents, edit `src/components/Office3D/agentsConfig.ts`:
-
-```ts
-export const AGENTS: AgentConfig[] = [
-  {
-    id: "main",       // must match workspace ID
-    name: "...",      // display name (can also come from API)
-    emoji: "🤖",
-    position: [0, 0, 0],
-    color: "#FFCC00",
-    role: "Main Agent",
-  },
-  // add your sub-agents here
-];
-```
-
-### 3D Avatar models
-
-To add custom 3D avatars (Ready Player Me GLB format), place them in `public/models/`:
-
-```
-public/models/
-├── main.glb        ← main agent avatar
-├── studio.glb      ← workspace-studio agent
-└── infra.glb       ← workspace-infra agent
-```
-
-Filename must match the agent `id`. If no file is found, a colored sphere is shown as fallback.  
-See `public/models/README.md` for full instructions.
+The 3D office needs no per-agent configuration: it reads the same `/api/agents` feed as the
+Agents page (built from `openclaw.json`), arranges one holographic pod per agent
+automatically, and shows live task info from `/api/office`. Names, emojis and colors follow
+`src/lib/agents-config.ts` plus any `ui` overrides in `openclaw.json`. The in-world NEURALOPS
+board is fed by `/api/jira/issues` and needs the same `JIRA_*` env vars as the Jira page.
 
 ### Cost tracking
 
