@@ -119,10 +119,9 @@ export async function runAutoDispatch(
     }
 
     try {
-      // 1. Dispatch to agent
-      result.dispatched = await dispatchToAgent(issue, agentSlug);
-
-      // 2. Transition to "In Progress" (only if not already)
+      // 1. Transition to "In Progress" (only if not already) — must happen
+      // before dispatch, since the dispatch message tells Sage this is
+      // already done.
       if (issue.status === "To Do") {
         const transitions = await getTransitions(issue.key);
         const inProgress = transitions.find(
@@ -138,16 +137,21 @@ export async function runAutoDispatch(
         result.transitioned = true;
       }
 
-      // 3. Post comment on Jira issue
+      // 2. Send Slack notification — also happens before dispatch, for the
+      // same reason: the dispatch message claims it's already gone out.
+      const slackText = `🤖 *${issue.key}* sent to \`${agentSlug}\` for triage\n*${issue.summary}*\n<${issue.url}|View in Jira>`;
+      const slackResult = await sendSlackMessage(NOTIFY_CHANNEL, slackText);
+      result.slackNotified = slackResult.ok;
+
+      // 3. Dispatch to agent — only now, once the state it references is
+      // actually true.
+      result.dispatched = await dispatchToAgent(issue, agentSlug);
+
+      // 4. Post comment on Jira issue
       await addJiraComment(
         issue.key,
         `🤖 Sent to ${agentSlug} for triage and assignment.\nAuto-dispatched via TenacitOS Mission Control.`,
       ).catch(() => null);
-
-      // 4. Send Slack notification
-      const slackText = `🤖 *${issue.key}* sent to \`${agentSlug}\` for triage\n*${issue.summary}*\n<${issue.url}|View in Jira>`;
-      const slackResult = await sendSlackMessage(NOTIFY_CHANNEL, slackText);
-      result.slackNotified = slackResult.ok;
 
       // 5. Create TenacitOS notification
       await createNotification({
