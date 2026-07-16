@@ -15,6 +15,7 @@ import {
   getSingleIssue,
   getTransitions,
   transitionIssue,
+  assignIssue,
   addJiraComment,
   type JiraIssue,
 } from "@/lib/jira";
@@ -25,6 +26,25 @@ import { createNotification } from "@/lib/notifications";
 const PROJECT = "NEURALOPS";
 const DEFAULT_AGENT = "sage";
 const NOTIFY_CHANNEL = "#dev";
+
+// Each openclaw agent has its own Jira service account (see docs/jira-agent-accounts.md),
+// so tickets show the actual agent working them as the assignee. Account IDs live in env
+// vars rather than agents-config.ts since they're Jira-specific and only this module needs
+// them.
+const AGENT_JIRA_ACCOUNT_ENV: Record<string, string> = {
+  sage: "JIRA_ACCOUNT_ID_SAGE",
+  main: "JIRA_ACCOUNT_ID_MAIN",
+  inbox: "JIRA_ACCOUNT_ID_INBOX",
+  brief: "JIRA_ACCOUNT_ID_BRIEF",
+  ghostwriter: "JIRA_ACCOUNT_ID_GHOSTWRITER",
+  qa: "JIRA_ACCOUNT_ID_QA",
+  playsmith: "JIRA_ACCOUNT_ID_PLAYSMITH",
+};
+
+function jiraAccountIdForAgent(agentSlug: string): string | undefined {
+  const envVar = AGENT_JIRA_ACCOUNT_ENV[agentSlug];
+  return envVar ? process.env[envVar] : undefined;
+}
 
 export class IssueNotFoundError extends Error {
   constructor(issueKey: string) {
@@ -38,6 +58,7 @@ export interface DispatchResult {
   summary: string;
   dispatched: boolean;
   transitioned: boolean;
+  assigned: boolean;
   slackNotified: boolean;
   error?: string;
 }
@@ -107,12 +128,14 @@ export async function runAutoDispatch(
       summary: issue.summary,
       dispatched: false,
       transitioned: false,
+      assigned: false,
       slackNotified: false,
     };
 
     if (dryRun) {
       result.dispatched = true;
       result.transitioned = true;
+      result.assigned = true;
       result.slackNotified = true;
       results.push(result);
       continue;
@@ -137,23 +160,33 @@ export async function runAutoDispatch(
         result.transitioned = true;
       }
 
-      // 2. Send Slack notification — also happens before dispatch, for the
+      // 2. Assign to the agent's own Jira service account, if one is
+      // configured. Best-effort — a missing/deactivated account shouldn't
+      // block the rest of the dispatch.
+      const accountId = jiraAccountIdForAgent(agentSlug);
+      if (accountId) {
+        result.assigned = await assignIssue(issue.key, accountId)
+          .then(() => true)
+          .catch(() => false);
+      }
+
+      // 3. Send Slack notification — also happens before dispatch, for the
       // same reason: the dispatch message claims it's already gone out.
       const slackText = `🤖 *${issue.key}* sent to \`${agentSlug}\` for triage\n*${issue.summary}*\n<${issue.url}|View in Jira>`;
       const slackResult = await sendSlackMessage(NOTIFY_CHANNEL, slackText);
       result.slackNotified = slackResult.ok;
 
-      // 3. Dispatch to agent — only now, once the state it references is
+      // 4. Dispatch to agent — only now, once the state it references is
       // actually true.
       result.dispatched = await dispatchToAgent(issue, agentSlug);
 
-      // 4. Post comment on Jira issue
+      // 5. Post comment on Jira issue
       await addJiraComment(
         issue.key,
         `🤖 Sent to ${agentSlug} for triage and assignment.\nAuto-dispatched via TenacitOS Mission Control.`,
       ).catch(() => null);
 
-      // 5. Create TenacitOS notification
+      // 6. Create TenacitOS notification
       await createNotification({
         title: `Agent dispatched: ${issue.key}`,
         message: issue.summary,
