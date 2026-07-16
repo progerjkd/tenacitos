@@ -56,3 +56,6 @@ next-env.d.ts
 
 # Claude Code session data (worktrees, local settings)
 .claude/
+
+# Manual worktree fallback (superpowers:using-git-worktrees)
+.worktrees/
