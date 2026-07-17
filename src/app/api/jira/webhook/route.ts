@@ -24,7 +24,9 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSingleIssue } from "@/lib/jira";
-import { runAutoDispatch } from "@/lib/jira-dispatch";
+import { runAutoDispatch, DEFAULT_AGENT } from "@/lib/jira-dispatch";
+import { decideCommentRelay } from "@/lib/jira-agent-session";
+import { callGateway } from "@/lib/gateway";
 import { sendSlackMessage } from "@/lib/slack";
 import { createNotification } from "@/lib/notifications";
 
@@ -133,6 +135,32 @@ export async function POST(request: NextRequest) {
     }).catch(() => null);
 
     return NextResponse.json({ ok: true, issueKey, event: "needs_input_relayed" });
+  }
+
+  // Human-reply relay: any other human comment on a ticket that's already
+  // being worked gets forwarded into that ticket's agent session, so an
+  // answer to a blocking question (or any other reply) actually reaches the
+  // agent instead of sitting silently on the ticket. This runs after the
+  // NEEDS_INPUT_MARKER block above (which already returned), so an agent's
+  // own outbound blocking question doesn't loop back into its own session.
+  if (commentBody) {
+    const decision = decideCommentRelay({
+      issueKey,
+      issueStatus: payload.issue?.fields?.status?.name ?? "",
+      commentBody,
+      agentSlug: DEFAULT_AGENT,
+    });
+
+    if (decision.relay && decision.sessionKey && decision.message) {
+      await callGateway("sessions.send", {
+        key: decision.sessionKey,
+        message: decision.message,
+        timeoutMs: 0,
+      }).catch(() => null);
+      return NextResponse.json({ ok: true, issueKey, event: "comment_relayed" });
+    }
+
+    return NextResponse.json({ skipped: true, reason: "comment not relayed" });
   }
 
   // Only act on issue_created or status transitions into "To Do"
