@@ -19,12 +19,13 @@ import {
   addJiraComment,
   type JiraIssue,
 } from "@/lib/jira";
+import { sessionKeyForTicket } from "@/lib/jira-agent-session";
 import { sendSlackMessage } from "@/lib/slack";
 import { callGateway } from "@/lib/gateway";
 import { createNotification } from "@/lib/notifications";
 
 const PROJECT = "NEURALOPS";
-const DEFAULT_AGENT = "sage";
+export const DEFAULT_AGENT = "sage";
 const NOTIFY_CHANNEL = "#dev";
 
 // Each openclaw agent has its own Jira service account (see docs/jira-agent-accounts.md),
@@ -88,10 +89,12 @@ async function dispatchToAgent(issue: JiraIssue, agentSlug: string): Promise<boo
     `on you from here.`,
   ].join("\n");
 
-  // Always targets Sage's own persistent session (not a per-ticket one) — Sage is the
-  // one long-lived agent in this pipeline; it fans work out to isolated specialist
-  // sessions itself via its native subagent (allowAgents) capability.
-  const sessionKey = `agent:${agentSlug}:main`;
+  // One session per ticket, not a single shared session — each ticket is a
+  // fully independent conversation, so a blocked ticket can't hold up
+  // dispatch/work on any other ticket, and a later reply on this issue (see
+  // the webhook route's comment relay) routes unambiguously back to the same
+  // session. See docs/superpowers/specs/2026-07-16-jira-dispatch-per-ticket-sessions-design.md.
+  const sessionKey = sessionKeyForTicket(agentSlug, issue.key);
   await callGateway("sessions.send", { key: sessionKey, message, timeoutMs: 0 });
   return true;
 }
