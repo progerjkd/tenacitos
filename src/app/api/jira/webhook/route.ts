@@ -24,7 +24,9 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSingleIssue } from "@/lib/jira";
-import { runAutoDispatch } from "@/lib/jira-dispatch";
+import { runAutoDispatch, DEFAULT_AGENT, agentSlugForJiraAccountId } from "@/lib/jira-dispatch";
+import { decideCommentRelay } from "@/lib/jira-agent-session";
+import { callGateway } from "@/lib/gateway";
 import { sendSlackMessage } from "@/lib/slack";
 import { createNotification } from "@/lib/notifications";
 
@@ -62,6 +64,7 @@ interface JiraWebhookPayload {
       status?: { name: string };
       priority?: { name: string };
       issuetype?: { name: string };
+      assignee?: { accountId?: string };
     };
   };
   comment?: {
@@ -133,6 +136,52 @@ export async function POST(request: NextRequest) {
     }).catch(() => null);
 
     return NextResponse.json({ ok: true, issueKey, event: "needs_input_relayed" });
+  }
+
+  // Human-reply relay: any other human comment on a ticket that's already
+  // being worked gets forwarded into that ticket's agent session, so an
+  // answer to a blocking question (or any other reply) actually reaches the
+  // agent instead of sitting silently on the ticket. This runs after the
+  // NEEDS_INPUT_MARKER block above (which already returned), so an agent's
+  // own outbound blocking question doesn't loop back into its own session.
+  // Restricted to comment_created specifically (not just "commentBody is
+  // present") so a jira:issue_updated delivery that happens to carry a
+  // comment alongside a To-Do transition still falls through to the
+  // isMovedToToDo dispatch check below, instead of this branch swallowing
+  // it and the ticket never getting auto-dispatched.
+  if (commentBody && event === "comment_created") {
+    // Route the reply to whichever agent this ticket was actually dispatched
+    // to (read off the Jira assignee, set by runAutoDispatch's best-effort
+    // per-agent assignment), not always DEFAULT_AGENT — a ticket dispatched
+    // via /api/jira/auto-dispatch with a non-default agentSlug (e.g. "qa")
+    // has its own session, and a reply must land there, not in Sage's.
+    // Falls back to DEFAULT_AGENT if unassigned or the assignee isn't a
+    // known agent account (matches assignment's own best-effort semantics).
+    const assigneeAccountId = payload.issue?.fields?.assignee?.accountId;
+    const agentSlug =
+      (assigneeAccountId && agentSlugForJiraAccountId(assigneeAccountId)) || DEFAULT_AGENT;
+
+    const decision = decideCommentRelay({
+      issueKey,
+      issueStatus: payload.issue?.fields?.status?.name ?? "",
+      commentBody,
+      agentSlug,
+      authorName: payload.comment?.author?.displayName ?? "a Jira user",
+    });
+
+    if (decision.relay && decision.sessionKey && decision.message) {
+      await callGateway("sessions.send", {
+        key: decision.sessionKey,
+        message: decision.message,
+        timeoutMs: 0,
+      }).catch((err) => {
+        console.error(`Failed to relay comment for ${issueKey}:`, err);
+        return null;
+      });
+      return NextResponse.json({ ok: true, issueKey, event: "comment_relayed" });
+    }
+
+    return NextResponse.json({ skipped: true, reason: "comment not relayed" });
   }
 
   // Only act on issue_created or status transitions into "To Do"

@@ -48,7 +48,7 @@ function IssueCard({
 
   const handleDispatch = async () => {
     setDispatching(true);
-    const message = `Work on ${issue.key}: ${issue.summary}\n\nJira: ${issue.url}\n\nCurrent status: ${issue.status}. Please pick this up, implement the changes needed, and move the issue to Done when complete.\n\nWhile working: post a short Jira comment after each meaningful step. If you're blocked or need a decision from a human, add a comment starting with "NEEDS INPUT:" followed by exactly what you need, then pause and wait — that marker is monitored and will page a human.`;
+    const message = `Work on ${issue.key}: ${issue.summary}\n\nJira: ${issue.url}\n\nCurrent status: ${issue.status}. Please pick this up, implement the changes needed, and move the issue to Done when complete.\n\nWhile working: prefix every Jira comment you post yourself with "🤖 " (a robot emoji) so it's recognized as your own status update rather than relayed back to you as if a human had replied. If you're blocked or need a decision from a human, add a comment starting with "NEEDS INPUT:" (no 🤖 prefix — that marker is checked and monitored separately) followed by exactly what you need, then pause and wait — that marker will page a human.`;
     try {
       const res = await fetch("/api/agents/dispatch", {
         method: "POST",
