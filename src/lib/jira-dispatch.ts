@@ -47,6 +47,17 @@ function jiraAccountIdForAgent(agentSlug: string): string | undefined {
   return envVar ? process.env[envVar] : undefined;
 }
 
+// Reverse of jiraAccountIdForAgent: given a Jira accountId (e.g. an issue's
+// current assignee), find which agent slug it belongs to. Used by the
+// webhook's comment relay to route a reply to whichever agent a ticket was
+// actually dispatched to, instead of always assuming DEFAULT_AGENT.
+export function agentSlugForJiraAccountId(accountId: string): string | undefined {
+  for (const [slug, envVar] of Object.entries(AGENT_JIRA_ACCOUNT_ENV)) {
+    if (process.env[envVar] === accountId) return slug;
+  }
+  return undefined;
+}
+
 export class IssueNotFoundError extends Error {
   constructor(issueKey: string) {
     super(`Issue not found: ${issueKey}`);

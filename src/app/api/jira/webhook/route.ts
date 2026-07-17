@@ -24,7 +24,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSingleIssue } from "@/lib/jira";
-import { runAutoDispatch, DEFAULT_AGENT } from "@/lib/jira-dispatch";
+import { runAutoDispatch, DEFAULT_AGENT, agentSlugForJiraAccountId } from "@/lib/jira-dispatch";
 import { decideCommentRelay } from "@/lib/jira-agent-session";
 import { callGateway } from "@/lib/gateway";
 import { sendSlackMessage } from "@/lib/slack";
@@ -64,6 +64,7 @@ interface JiraWebhookPayload {
       status?: { name: string };
       priority?: { name: string };
       issuetype?: { name: string };
+      assignee?: { accountId?: string };
     };
   };
   comment?: {
@@ -144,11 +145,22 @@ export async function POST(request: NextRequest) {
   // NEEDS_INPUT_MARKER block above (which already returned), so an agent's
   // own outbound blocking question doesn't loop back into its own session.
   if (commentBody) {
+    // Route the reply to whichever agent this ticket was actually dispatched
+    // to (read off the Jira assignee, set by runAutoDispatch's best-effort
+    // per-agent assignment), not always DEFAULT_AGENT — a ticket dispatched
+    // via /api/jira/auto-dispatch with a non-default agentSlug (e.g. "qa")
+    // has its own session, and a reply must land there, not in Sage's.
+    // Falls back to DEFAULT_AGENT if unassigned or the assignee isn't a
+    // known agent account (matches assignment's own best-effort semantics).
+    const assigneeAccountId = payload.issue?.fields?.assignee?.accountId;
+    const agentSlug =
+      (assigneeAccountId && agentSlugForJiraAccountId(assigneeAccountId)) || DEFAULT_AGENT;
+
     const decision = decideCommentRelay({
       issueKey,
       issueStatus: payload.issue?.fields?.status?.name ?? "",
       commentBody,
-      agentSlug: DEFAULT_AGENT,
+      agentSlug,
       authorName: payload.comment?.author?.displayName ?? "a Jira user",
     });
 
