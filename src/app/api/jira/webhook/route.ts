@@ -149,6 +149,7 @@ export async function POST(request: NextRequest) {
       issueStatus: payload.issue?.fields?.status?.name ?? "",
       commentBody,
       agentSlug: DEFAULT_AGENT,
+      authorName: payload.comment?.author?.displayName ?? "a Jira user",
     });
 
     if (decision.relay && decision.sessionKey && decision.message) {
@@ -156,7 +157,10 @@ export async function POST(request: NextRequest) {
         key: decision.sessionKey,
         message: decision.message,
         timeoutMs: 0,
-      }).catch(() => null);
+      }).catch((err) => {
+        console.error(`Failed to relay comment for ${issueKey}:`, err);
+        return null;
+      });
       return NextResponse.json({ ok: true, issueKey, event: "comment_relayed" });
     }
 
