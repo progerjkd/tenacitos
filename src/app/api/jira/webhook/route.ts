@@ -144,7 +144,12 @@ export async function POST(request: NextRequest) {
   // agent instead of sitting silently on the ticket. This runs after the
   // NEEDS_INPUT_MARKER block above (which already returned), so an agent's
   // own outbound blocking question doesn't loop back into its own session.
-  if (commentBody) {
+  // Restricted to comment_created specifically (not just "commentBody is
+  // present") so a jira:issue_updated delivery that happens to carry a
+  // comment alongside a To-Do transition still falls through to the
+  // isMovedToToDo dispatch check below, instead of this branch swallowing
+  // it and the ticket never getting auto-dispatched.
+  if (commentBody && event === "comment_created") {
     // Route the reply to whichever agent this ticket was actually dispatched
     // to (read off the Jira assignee, set by runAutoDispatch's best-effort
     // per-agent assignment), not always DEFAULT_AGENT — a ticket dispatched
