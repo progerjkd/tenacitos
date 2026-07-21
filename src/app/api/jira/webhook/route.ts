@@ -27,31 +27,10 @@ import { getSingleIssue } from "@/lib/jira";
 import { runAutoDispatch } from "@/lib/jira-dispatch";
 import { sendSlackMessage } from "@/lib/slack";
 import { createNotification } from "@/lib/notifications";
+import { extractPlainText } from "@/lib/adf";
 
 const NOTIFY_CHANNEL = "#dev";
 const NEEDS_INPUT_MARKER = /^needs input:/i;
-
-// Jira Cloud webhook payloads normally send comment.body as a plain string,
-// but issue comment bodies can also arrive in Atlassian Document Format
-// (nested content[].content[].text) — handle both defensively.
-function extractPlainText(body: unknown): string {
-  if (typeof body === "string") return body;
-  if (body && typeof body === "object") {
-    const texts: string[] = [];
-    const walk = (node: unknown): void => {
-      if (Array.isArray(node)) {
-        node.forEach(walk);
-      } else if (node && typeof node === "object") {
-        const obj = node as Record<string, unknown>;
-        if (typeof obj.text === "string") texts.push(obj.text);
-        if (obj.content) walk(obj.content);
-      }
-    };
-    walk(body);
-    return texts.join(" ");
-  }
-  return "";
-}
 
 interface JiraWebhookPayload {
   webhookEvent?: string;
@@ -133,6 +112,36 @@ export async function POST(request: NextRequest) {
     }).catch(() => null);
 
     return NextResponse.json({ ok: true, issueKey, event: "needs_input_relayed" });
+  }
+
+  // Resolution relay: a ticket landing in "Done" doesn't otherwise produce any signal — the
+  // dispatched agent is only asked to ping Slack/Roger itself, which it won't reliably do for
+  // trivial tickets it closes without real work. Post the completion notice here instead of
+  // depending on that.
+  const isMovedToDone =
+    event === "jira:issue_updated" &&
+    payload.changelog?.items?.some(
+      (item) => item.field === "status" && item.toString?.toLowerCase() === "done",
+    );
+
+  if (isMovedToDone) {
+    const summary = payload.issue?.fields?.summary ?? issueKey;
+    const issueUrl = `${(process.env.JIRA_BASE_URL ?? "").replace(/\/$/, "")}/browse/${issueKey}`;
+
+    await sendSlackMessage(
+      NOTIFY_CHANNEL,
+      `✅ *${issueKey}* resolved\n*${summary}*\n<${issueUrl}|View in Jira>`,
+    ).catch(() => null);
+
+    await createNotification({
+      title: `${issueKey} resolved`,
+      message: summary,
+      type: "success",
+      link: `/jira`,
+      metadata: { issueKey, issueUrl },
+    }).catch(() => null);
+
+    return NextResponse.json({ ok: true, issueKey, event: "resolved_notified" });
   }
 
   // Only act on issue_created or status transitions into "To Do"

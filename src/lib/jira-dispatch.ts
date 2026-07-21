@@ -16,6 +16,7 @@ import {
   getTransitions,
   transitionIssue,
   addJiraComment,
+  getIssueComments,
   type JiraIssue,
 } from "@/lib/jira";
 import { sendSlackMessage } from "@/lib/slack";
@@ -25,6 +26,13 @@ import { createNotification } from "@/lib/notifications";
 const PROJECT = "NEURALOPS";
 const DEFAULT_AGENT = "sage";
 const NOTIFY_CHANNEL = "#dev";
+
+// Marker left on the Jira comment posted by step 4 below. Jira can deliver more than one
+// qualifying webhook event for the same status change (e.g. issue_created firing alongside a
+// near-simultaneous issue_updated into "To Do"), and runAutoDispatch has no other memory across
+// calls — so re-check this marker before doing anything, rather than dispatching blind every time
+// an issue is seen in "To Do".
+const DISPATCH_MARKER = "Auto-dispatched via TenacitOS Mission Control.";
 
 export class IssueNotFoundError extends Error {
   constructor(issueKey: string) {
@@ -39,6 +47,7 @@ export interface DispatchResult {
   dispatched: boolean;
   transitioned: boolean;
   slackNotified: boolean;
+  skipped?: boolean;
   error?: string;
 }
 
@@ -49,7 +58,7 @@ export interface AutoDispatchOptions {
 }
 
 export interface AutoDispatchOutcome {
-  summary: { total: number; dispatched: number; errors: number; dryRun: boolean };
+  summary: { total: number; dispatched: number; errors: number; skipped: number; dryRun: boolean };
   dispatched: DispatchResult[];
   message?: string;
 }
@@ -93,7 +102,7 @@ export async function runAutoDispatch(
 
   if (issues.length === 0) {
     return {
-      summary: { total: 0, dispatched: 0, errors: 0, dryRun },
+      summary: { total: 0, dispatched: 0, errors: 0, skipped: 0, dryRun },
       dispatched: [],
       message: "No To Do issues found",
     };
@@ -114,6 +123,20 @@ export async function runAutoDispatch(
       result.dispatched = true;
       result.transitioned = true;
       result.slackNotified = true;
+      results.push(result);
+      continue;
+    }
+
+    let alreadyDispatched = false;
+    try {
+      const comments = await getIssueComments(issue.key);
+      alreadyDispatched = comments.some((body) => body.includes(DISPATCH_MARKER));
+    } catch {
+      // Can't confirm either way — fail open and dispatch rather than silently drop the issue.
+    }
+
+    if (alreadyDispatched) {
+      result.skipped = true;
       results.push(result);
       continue;
     }
@@ -150,7 +173,7 @@ export async function runAutoDispatch(
       // 4. Post comment on Jira issue
       await addJiraComment(
         issue.key,
-        `🤖 Sent to ${agentSlug} for triage and assignment.\nAuto-dispatched via TenacitOS Mission Control.`,
+        `🤖 Sent to ${agentSlug} for triage and assignment.\n${DISPATCH_MARKER}`,
       ).catch(() => null);
 
       // 5. Create TenacitOS notification
@@ -172,6 +195,7 @@ export async function runAutoDispatch(
     total: results.length,
     dispatched: results.filter((r) => r.dispatched).length,
     errors: results.filter((r) => r.error).length,
+    skipped: results.filter((r) => r.skipped).length,
     dryRun,
   };
 

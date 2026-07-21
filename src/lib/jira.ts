@@ -1,3 +1,5 @@
+import { extractPlainText } from "@/lib/adf";
+
 export const JIRA_COLUMNS = ["To Do", "In Progress", "Done"] as const;
 export type JiraStatus = (typeof JIRA_COLUMNS)[number];
 
@@ -168,6 +170,16 @@ export async function getSingleIssue(issueKey: string): Promise<JiraIssue | null
       : null,
     url: `${jiraBase()}/browse/${issue.key}`,
   };
+}
+
+export async function getIssueComments(issueKey: string): Promise<string[]> {
+  const res = await fetch(`${jiraBase()}/rest/api/3/issue/${issueKey}/comment`, {
+    headers: { Authorization: jiraAuthHeader(), Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { comments: Array<{ body: unknown }> };
+  return data.comments.map((c) => extractPlainText(c.body));
 }
 
 export async function addJiraComment(issueKey: string, body: string): Promise<void> {
