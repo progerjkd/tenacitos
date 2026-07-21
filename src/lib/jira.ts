@@ -172,14 +172,24 @@ export async function getSingleIssue(issueKey: string): Promise<JiraIssue | null
   };
 }
 
-export async function getIssueComments(issueKey: string): Promise<string[]> {
-  const res = await fetch(`${jiraBase()}/rest/api/3/issue/${issueKey}/comment`, {
-    headers: { Authorization: jiraAuthHeader(), Accept: "application/json" },
-    cache: "no-store",
-  });
+export interface JiraComment {
+  body: string;
+  created: string;
+}
+
+// Newest-first, capped at 20: callers that need this (dedupe checks) only ever care about
+// recent comments, so this avoids paginating through an issue's full history to find them.
+export async function getIssueComments(issueKey: string): Promise<JiraComment[]> {
+  const res = await fetch(
+    `${jiraBase()}/rest/api/3/issue/${issueKey}/comment?orderBy=-created&maxResults=20`,
+    {
+      headers: { Authorization: jiraAuthHeader(), Accept: "application/json" },
+      cache: "no-store",
+    },
+  );
   if (!res.ok) return [];
-  const data = (await res.json()) as { comments: Array<{ body: unknown }> };
-  return data.comments.map((c) => extractPlainText(c.body));
+  const data = (await res.json()) as { comments: Array<{ body: unknown; created: string }> };
+  return data.comments.map((c) => ({ body: extractPlainText(c.body), created: c.created }));
 }
 
 export async function addJiraComment(issueKey: string, body: string): Promise<void> {

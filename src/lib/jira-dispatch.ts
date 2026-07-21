@@ -32,7 +32,27 @@ const NOTIFY_CHANNEL = "#dev";
 // near-simultaneous issue_updated into "To Do"), and runAutoDispatch has no other memory across
 // calls — so re-check this marker before doing anything, rather than dispatching blind every time
 // an issue is seen in "To Do".
+//
+// Only a marker within this window counts as "already dispatched": it needs to be long enough to
+// absorb near-duplicate webhook deliveries for the *same* transition (observed ~25s apart live),
+// but short enough that a legitimate later re-dispatch — the issue cycling back to "To Do" after
+// being reopened — isn't permanently blocked by a marker from its previous run.
 const DISPATCH_MARKER = "Auto-dispatched via TenacitOS Mission Control.";
+const DISPATCH_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
+
+// Per-issue-key serialization so two overlapping runAutoDispatch calls (e.g. two concurrent
+// webhook deliveries for the same issue) can't both read "not yet dispatched" before either has
+// posted the marker comment — without this the comment check above is a TOCTOU race, not a real
+// guard. Chaining onto the map entry keeps each key's calls strictly sequential; unrelated issue
+// keys still run concurrently.
+const dispatchLocks = new Map<string, Promise<unknown>>();
+
+function withDispatchLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = dispatchLocks.get(key) ?? Promise.resolve();
+  const run = previous.catch(() => {}).then(fn);
+  dispatchLocks.set(key, run.catch(() => {}));
+  return run;
+}
 
 export class IssueNotFoundError extends Error {
   constructor(issueKey: string) {
@@ -127,66 +147,72 @@ export async function runAutoDispatch(
       continue;
     }
 
-    let alreadyDispatched = false;
-    try {
-      const comments = await getIssueComments(issue.key);
-      alreadyDispatched = comments.some((body) => body.includes(DISPATCH_MARKER));
-    } catch {
-      // Can't confirm either way — fail open and dispatch rather than silently drop the issue.
-    }
-
-    if (alreadyDispatched) {
-      result.skipped = true;
-      results.push(result);
-      continue;
-    }
-
-    try {
-      // 1. Transition to "In Progress" (only if not already) — must happen
-      // before dispatch, since the dispatch message tells Sage this is
-      // already done.
-      if (issue.status === "To Do") {
-        const transitions = await getTransitions(issue.key);
-        const inProgress = transitions.find(
-          (t) =>
-            t.name.toLowerCase().includes("progress") ||
-            t.name.toLowerCase() === "in progress",
-        );
-        if (inProgress) {
-          await transitionIssue(issue.key, inProgress.id);
-          result.transitioned = true;
-        }
-      } else {
-        result.transitioned = true;
+    await withDispatchLock(issue.key, async () => {
+      let alreadyDispatched = false;
+      try {
+        const comments = await getIssueComments(issue.key);
+        const now = Date.now();
+        alreadyDispatched = comments.some((c) => {
+          if (!c.body.includes(DISPATCH_MARKER)) return false;
+          const age = now - new Date(c.created).getTime();
+          return age >= 0 && age < DISPATCH_DEDUPE_WINDOW_MS;
+        });
+      } catch {
+        // Can't confirm either way — fail open and dispatch rather than silently drop the issue.
       }
 
-      // 2. Send Slack notification — also happens before dispatch, for the
-      // same reason: the dispatch message claims it's already gone out.
-      const slackText = `🤖 *${issue.key}* sent to \`${agentSlug}\` for triage\n*${issue.summary}*\n<${issue.url}|View in Jira>`;
-      const slackResult = await sendSlackMessage(NOTIFY_CHANNEL, slackText);
-      result.slackNotified = slackResult.ok;
+      if (alreadyDispatched) {
+        result.skipped = true;
+        return;
+      }
 
-      // 3. Dispatch to agent — only now, once the state it references is
-      // actually true.
-      result.dispatched = await dispatchToAgent(issue, agentSlug);
+      try {
+        // 1. Transition to "In Progress" (only if not already) — must happen
+        // before dispatch, since the dispatch message tells Sage this is
+        // already done.
+        if (issue.status === "To Do") {
+          const transitions = await getTransitions(issue.key);
+          const inProgress = transitions.find(
+            (t) =>
+              t.name.toLowerCase().includes("progress") ||
+              t.name.toLowerCase() === "in progress",
+          );
+          if (inProgress) {
+            await transitionIssue(issue.key, inProgress.id);
+            result.transitioned = true;
+          }
+        } else {
+          result.transitioned = true;
+        }
 
-      // 4. Post comment on Jira issue
-      await addJiraComment(
-        issue.key,
-        `🤖 Sent to ${agentSlug} for triage and assignment.\n${DISPATCH_MARKER}`,
-      ).catch(() => null);
+        // 2. Send Slack notification — also happens before dispatch, for the
+        // same reason: the dispatch message claims it's already gone out.
+        const slackText = `🤖 *${issue.key}* sent to \`${agentSlug}\` for triage\n*${issue.summary}*\n<${issue.url}|View in Jira>`;
+        const slackResult = await sendSlackMessage(NOTIFY_CHANNEL, slackText);
+        result.slackNotified = slackResult.ok;
 
-      // 5. Create TenacitOS notification
-      await createNotification({
-        title: `Agent dispatched: ${issue.key}`,
-        message: issue.summary,
-        type: "info",
-        link: `/jira`,
-        metadata: { issueKey: issue.key, issueUrl: issue.url },
-      }).catch(() => null);
-    } catch (err) {
-      result.error = err instanceof Error ? err.message : String(err);
-    }
+        // 3. Dispatch to agent — only now, once the state it references is
+        // actually true.
+        result.dispatched = await dispatchToAgent(issue, agentSlug);
+
+        // 4. Post comment on Jira issue
+        await addJiraComment(
+          issue.key,
+          `🤖 Sent to ${agentSlug} for triage and assignment.\n${DISPATCH_MARKER}`,
+        ).catch(() => null);
+
+        // 5. Create TenacitOS notification
+        await createNotification({
+          title: `Agent dispatched: ${issue.key}`,
+          message: issue.summary,
+          type: "info",
+          link: `/jira`,
+          metadata: { issueKey: issue.key, issueUrl: issue.url },
+        }).catch(() => null);
+      } catch (err) {
+        result.error = err instanceof Error ? err.message : String(err);
+      }
+    });
 
     results.push(result);
   }
