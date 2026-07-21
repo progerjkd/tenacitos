@@ -159,12 +159,20 @@ export async function POST(request: NextRequest) {
     );
 
   if (isMovedToDone) {
+    // A delayed or redelivered webhook can arrive after the issue has already been reopened —
+    // the changelog in the payload only proves it moved to Done at some point, not that it's
+    // still there now. Re-fetch and confirm, the same way the dispatch path below does.
+    const doneIssue = await getSingleIssue(issueKey).catch(() => null);
+    if (!doneIssue || doneIssue.status !== "Done") {
+      return NextResponse.json({ skipped: true, reason: "status is not Done anymore" });
+    }
+
     if (wasResolvedNotifiedRecently(issueKey)) {
       return NextResponse.json({ skipped: true, reason: "resolution already notified" });
     }
     markResolvedNotified(issueKey);
 
-    const summary = payload.issue?.fields?.summary ?? issueKey;
+    const summary = doneIssue.summary;
     const issueUrl = `${(process.env.JIRA_BASE_URL ?? "").replace(/\/$/, "")}/browse/${issueKey}`;
 
     await sendSlackMessage(
