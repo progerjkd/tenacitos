@@ -27,30 +27,31 @@ import { getSingleIssue } from "@/lib/jira";
 import { runAutoDispatch } from "@/lib/jira-dispatch";
 import { sendSlackMessage } from "@/lib/slack";
 import { createNotification } from "@/lib/notifications";
+import { extractPlainText } from "@/lib/adf";
 
 const NOTIFY_CHANNEL = "#dev";
 const NEEDS_INPUT_MARKER = /^needs input:/i;
 
-// Jira Cloud webhook payloads normally send comment.body as a plain string,
-// but issue comment bodies can also arrive in Atlassian Document Format
-// (nested content[].content[].text) — handle both defensively.
-function extractPlainText(body: unknown): string {
-  if (typeof body === "string") return body;
-  if (body && typeof body === "object") {
-    const texts: string[] = [];
-    const walk = (node: unknown): void => {
-      if (Array.isArray(node)) {
-        node.forEach(walk);
-      } else if (node && typeof node === "object") {
-        const obj = node as Record<string, unknown>;
-        if (typeof obj.text === "string") texts.push(obj.text);
-        if (obj.content) walk(obj.content);
-      }
-    };
-    walk(body);
-    return texts.join(" ");
+// Jira can redeliver the same webhook (retry after a slow response, etc.), and this route has no
+// per-event ID to key off of — so without this, a redelivered "moved to Done" event posts the
+// resolution notice twice. Checked and set synchronously (no await between them), so unlike the
+// dispatch path this needs no lock: there's no gap for a second concurrent request to interleave.
+// The window alone would also swallow a legitimate reopen-then-reclose within it, so that case is
+// handled separately below by clearing the mark as soon as the issue leaves Done.
+const RESOLVED_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
+const resolvedNotifyMarks = new Map<string, number>();
+
+function wasResolvedNotifiedRecently(key: string): boolean {
+  const ts = resolvedNotifyMarks.get(key);
+  return ts !== undefined && Date.now() - ts < RESOLVED_DEDUPE_WINDOW_MS;
+}
+
+function markResolvedNotified(key: string): void {
+  const now = Date.now();
+  for (const [k, ts] of resolvedNotifyMarks) {
+    if (now - ts >= RESOLVED_DEDUPE_WINDOW_MS) resolvedNotifyMarks.delete(k);
   }
-  return "";
+  resolvedNotifyMarks.set(key, now);
 }
 
 interface JiraWebhookPayload {
@@ -111,6 +112,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ skipped: true, reason: "no issue key" });
   }
 
+  // Clear any resolved-notification mark once the issue leaves Done, so a legitimate reopen +
+  // re-close within the dedupe window isn't mistaken for a redelivery of the earlier resolution.
+  const movedAwayFromDone = payload.changelog?.items?.some(
+    (item) =>
+      item.field === "status" &&
+      item.fromString?.toLowerCase() === "done" &&
+      item.toString?.toLowerCase() !== "done",
+  );
+  if (movedAwayFromDone) {
+    resolvedNotifyMarks.delete(issueKey);
+  }
+
   // Comment-added relay: an agent stuck mid-task posts a Jira comment starting
   // with "NEEDS INPUT:" — forward it to Slack + the in-app notification bell
   // immediately, instead of it sitting silently on the ticket.
@@ -133,6 +146,49 @@ export async function POST(request: NextRequest) {
     }).catch(() => null);
 
     return NextResponse.json({ ok: true, issueKey, event: "needs_input_relayed" });
+  }
+
+  // Resolution relay: a ticket landing in "Done" doesn't otherwise produce any signal — the
+  // dispatched agent is only asked to ping Slack/Roger itself, which it won't reliably do for
+  // trivial tickets it closes without real work. Post the completion notice here instead of
+  // depending on that.
+  const isMovedToDone =
+    event === "jira:issue_updated" &&
+    payload.changelog?.items?.some(
+      (item) => item.field === "status" && item.toString?.toLowerCase() === "done",
+    );
+
+  if (isMovedToDone) {
+    // A delayed or redelivered webhook can arrive after the issue has already been reopened —
+    // the changelog in the payload only proves it moved to Done at some point, not that it's
+    // still there now. Re-fetch and confirm, the same way the dispatch path below does.
+    const doneIssue = await getSingleIssue(issueKey).catch(() => null);
+    if (!doneIssue || doneIssue.status !== "Done") {
+      return NextResponse.json({ skipped: true, reason: "status is not Done anymore" });
+    }
+
+    if (wasResolvedNotifiedRecently(issueKey)) {
+      return NextResponse.json({ skipped: true, reason: "resolution already notified" });
+    }
+    markResolvedNotified(issueKey);
+
+    const summary = doneIssue.summary;
+    const issueUrl = `${(process.env.JIRA_BASE_URL ?? "").replace(/\/$/, "")}/browse/${issueKey}`;
+
+    await sendSlackMessage(
+      NOTIFY_CHANNEL,
+      `✅ *${issueKey}* resolved\n*${summary}*\n<${issueUrl}|View in Jira>`,
+    ).catch(() => null);
+
+    await createNotification({
+      title: `${issueKey} resolved`,
+      message: summary,
+      type: "success",
+      link: `/jira`,
+      metadata: { issueKey, issueUrl },
+    }).catch(() => null);
+
+    return NextResponse.json({ ok: true, issueKey, event: "resolved_notified" });
   }
 
   // Only act on issue_created or status transitions into "To Do"
