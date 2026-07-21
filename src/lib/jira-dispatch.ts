@@ -34,14 +34,29 @@ const NOTIFY_CHANNEL = "#dev";
 // calls — so re-check this marker before doing anything, rather than dispatching blind every time
 // an issue is seen in "To Do".
 //
-// A marker only counts as "already dispatched" if it was posted during the issue's *current*
-// stint in "To Do" (per getCurrentToDoStintStart) — not merely recently. Time alone can't tell
-// apart a duplicate delivery of the same transition from a legitimate one (an issue can genuinely
-// cycle back into "To Do" seconds after leaving it — a fixed window would swallow that dispatch
-// too, and nothing would ever retry it since there's no scheduled follow-up). DISPATCH_DEDUPE_WINDOW_MS
-// is only the fallback when the stint lookup itself fails.
+// A marker only counts as "already dispatched" if it carries the *same stint* tag as the one
+// captured for the current check (see below) — not merely one whose timestamp happens to fall
+// after the current stint's start. The stint can legitimately change *during* the Slack/gateway
+// work between capturing it and writing the marker (the issue leaves and re-enters "To Do" while
+// a dispatch for the old stint is still in flight); comparing by timestamp at write time would
+// then misattribute that marker to the new stint and wrongly suppress its own dispatch. Comparing
+// by the stint value captured before the work began avoids that regardless of how long it takes.
+// DISPATCH_DEDUPE_WINDOW_MS is only the fallback when a stint can't be resolved on either side.
 const DISPATCH_MARKER = "Auto-dispatched via TenacitOS Mission Control.";
 const DISPATCH_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
+
+function buildDispatchMarker(stintStart: number | null): string {
+  return stintStart === null ? DISPATCH_MARKER : `${DISPATCH_MARKER} [stint:${stintStart}]`;
+}
+
+function isDispatchMarker(body: string): boolean {
+  return body.includes(DISPATCH_MARKER);
+}
+
+function extractMarkerStint(body: string): number | null {
+  const match = body.match(/\[stint:(\d+)\]/);
+  return match ? Number(match[1]) : null;
+}
 
 // Per-issue-key serialization so two overlapping runAutoDispatch calls (e.g. two concurrent
 // webhook deliveries for the same issue) can't both read "not yet dispatched" before either has
@@ -55,24 +70,31 @@ const dispatchLocks = new Map<string, Promise<unknown>>();
 // nothing and re-dispatch — recreating the exact duplicate this whole mechanism exists to prevent.
 // This in-process record survives that specific failure since it's set right after the dispatch
 // itself succeeds, independent of whether the Jira write does.
-const localDispatchMarks = new Map<string, number>();
+//
+// Stores the stint captured at the *start* of the check (same reasoning as the Jira marker above)
+// rather than the completion timestamp, so identity — not wall-clock ordering — is what's compared.
+interface LocalDispatchMark {
+  stintStart: number | null;
+  capturedAt: number;
+}
+const localDispatchMarks = new Map<string, LocalDispatchMark>();
 
-function markDispatchedLocally(key: string): void {
+function markDispatchedLocally(key: string, stintStart: number | null): void {
   const now = Date.now();
-  for (const [k, ts] of localDispatchMarks) {
-    if (now - ts >= DISPATCH_DEDUPE_WINDOW_MS) localDispatchMarks.delete(k);
+  for (const [k, mark] of localDispatchMarks) {
+    if (now - mark.capturedAt >= DISPATCH_DEDUPE_WINDOW_MS) localDispatchMarks.delete(k);
   }
-  localDispatchMarks.set(key, now);
+  localDispatchMarks.set(key, { stintStart, capturedAt: now });
 }
 
-// Same stint-scoping as the Jira comment marker (see DISPATCH_MARKER above) — otherwise this
-// fallback reintroduces the exact bug it was added to guard against, just via a different path:
-// blocking a legitimate rapid re-dispatch with no way to recover since nothing retries it.
 function wasDispatchedLocallyRecently(key: string, stintStart: number | null): boolean {
-  const ts = localDispatchMarks.get(key);
-  if (ts === undefined) return false;
-  if (stintStart !== null) return ts >= stintStart;
-  return Date.now() - ts < DISPATCH_DEDUPE_WINDOW_MS;
+  const mark = localDispatchMarks.get(key);
+  if (!mark) return false;
+  if (stintStart !== null && mark.stintStart !== null) {
+    return mark.stintStart === stintStart;
+  }
+  // Couldn't resolve a stint on one side or the other — fall back to a short window.
+  return Date.now() - mark.capturedAt < DISPATCH_DEDUPE_WINDOW_MS;
 }
 
 function withDispatchLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -194,15 +216,17 @@ export async function runAutoDispatch(
       let alreadyDispatched = wasDispatchedLocallyRecently(issue.key, stintStart);
       if (!alreadyDispatched) {
         try {
-          const comments = await getIssueComments(issue.key);
-          const now = Date.now();
+          const comments = await getIssueComments(issue.key, { since: stintStart ?? undefined });
           alreadyDispatched = comments.some((c) => {
-            if (!c.body.includes(DISPATCH_MARKER)) return false;
+            if (!isDispatchMarker(c.body)) return false;
+            const markerStint = extractMarkerStint(c.body);
+            if (stintStart !== null && markerStint !== null) {
+              return markerStint === stintStart;
+            }
+            // Couldn't resolve a stint on one side or the other — fall back to a short window
+            // rather than either blocking dispatch forever or never deduping at all.
             const commentTime = new Date(c.created).getTime();
-            if (stintStart !== null) return commentTime >= stintStart;
-            // Couldn't resolve the current stint — fall back to a short window rather than
-            // either blocking dispatch forever or never deduping at all.
-            return now - commentTime < DISPATCH_DEDUPE_WINDOW_MS;
+            return Date.now() - commentTime < DISPATCH_DEDUPE_WINDOW_MS;
           });
         } catch {
           // Can't confirm either way — fail open and dispatch rather than silently drop the issue.
@@ -242,12 +266,12 @@ export async function runAutoDispatch(
         // 3. Dispatch to agent — only now, once the state it references is
         // actually true.
         result.dispatched = await dispatchToAgent(issue, agentSlug);
-        markDispatchedLocally(issue.key);
+        markDispatchedLocally(issue.key, stintStart);
 
         // 4. Post comment on Jira issue
         await addJiraComment(
           issue.key,
-          `🤖 Sent to ${agentSlug} for triage and assignment.\n${DISPATCH_MARKER}`,
+          `🤖 Sent to ${agentSlug} for triage and assignment.\n${buildDispatchMarker(stintStart)}`,
         ).catch(() => null);
 
         // 5. Create TenacitOS notification

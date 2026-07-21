@@ -230,17 +230,41 @@ export async function getCurrentToDoStintStart(issueKey: string): Promise<number
   return new Date(issueData.fields.created).getTime();
 }
 
-export async function getIssueComments(issueKey: string): Promise<JiraComment[]> {
-  const res = await fetch(
-    `${jiraBase()}/rest/api/3/issue/${issueKey}/comment?orderBy=-created&maxResults=20`,
-    {
-      headers: { Authorization: jiraAuthHeader(), Accept: "application/json" },
-      cache: "no-store",
-    },
-  );
-  if (!res.ok) return [];
-  const data = (await res.json()) as { comments: Array<{ body: unknown; created: string }> };
-  return data.comments.map((c) => ({ body: extractPlainText(c.body), created: c.created }));
+// Newest-first. Without `since`, returns a single capped page (cheap default for callers that
+// only care about very recent activity). With `since`, pages backward until a comment older than
+// that boundary is hit — needed so a marker doesn't fall off a fixed-size page just because
+// enough other comments landed on the issue afterward, within the same stint.
+export async function getIssueComments(
+  issueKey: string,
+  opts?: { since?: number },
+): Promise<JiraComment[]> {
+  const PAGE_SIZE = 20;
+  const headers = { Authorization: jiraAuthHeader(), Accept: "application/json" };
+  const results: JiraComment[] = [];
+  let startAt = 0;
+
+  for (;;) {
+    const res = await fetch(
+      `${jiraBase()}/rest/api/3/issue/${issueKey}/comment?orderBy=-created&startAt=${startAt}&maxResults=${PAGE_SIZE}`,
+      { headers, cache: "no-store" },
+    );
+    if (!res.ok) return results;
+    const data = (await res.json()) as {
+      total: number;
+      comments: Array<{ body: unknown; created: string }>;
+    };
+    if (data.comments.length === 0) return results;
+
+    for (const c of data.comments) {
+      if (opts?.since !== undefined && new Date(c.created).getTime() < opts.since) {
+        return results;
+      }
+      results.push({ body: extractPlainText(c.body), created: c.created });
+    }
+
+    startAt += data.comments.length;
+    if (opts?.since === undefined || startAt >= data.total) return results;
+  }
 }
 
 export async function addJiraComment(issueKey: string, body: string): Promise<void> {
