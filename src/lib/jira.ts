@@ -183,9 +183,10 @@ export interface JiraComment {
 // the lookup fails, so callers can fall back to a time-window heuristic instead.
 //
 // Uses the dedicated paginated changelog endpoint (not `expand=changelog` on the issue itself,
-// which silently truncates) and reads from the *end* of the history — startAt is computed from
-// the reported total so the most recent entries are always the ones fetched, regardless of how
-// long the issue's full history is.
+// which silently truncates) and walks backward from the end of the history, one page at a time,
+// until a "To Do" transition is found — a single final page isn't enough on its own: an issue can
+// accumulate more than a page's worth of unrelated field edits after the transition we actually
+// care about, which would otherwise push it out of the last page entirely.
 export async function getCurrentToDoStintStart(issueKey: string): Promise<number | null> {
   const PAGE_SIZE = 100;
   const changelogUrl = (startAt: number) =>
@@ -196,26 +197,30 @@ export async function getCurrentToDoStintStart(issueKey: string): Promise<number
   if (!countRes.ok) return null;
   const countData = (await countRes.json()) as { total: number };
 
-  const startAt = Math.max(0, countData.total - PAGE_SIZE);
-  const pageRes = await fetch(changelogUrl(startAt), { headers, cache: "no-store" });
-  if (!pageRes.ok) return null;
-  const page = (await pageRes.json()) as {
-    values: Array<{ created: string; items: Array<{ field: string; toString?: string }> }>;
-  };
+  let startAt = Math.max(0, countData.total - PAGE_SIZE);
+  for (;;) {
+    const pageRes = await fetch(changelogUrl(startAt), { headers, cache: "no-store" });
+    if (!pageRes.ok) return null;
+    const page = (await pageRes.json()) as {
+      values: Array<{ created: string; items: Array<{ field: string; toString?: string }> }>;
+    };
 
-  let latest = 0;
-  for (const history of page.values) {
-    for (const item of history.items) {
-      if (item.field === "status" && item.toString === "To Do") {
-        const t = new Date(history.created).getTime();
-        if (t > latest) latest = t;
+    let latest = 0;
+    for (const history of page.values) {
+      for (const item of history.items) {
+        if (item.field === "status" && item.toString === "To Do") {
+          const t = new Date(history.created).getTime();
+          if (t > latest) latest = t;
+        }
       }
     }
+    if (latest) return latest;
+    if (startAt === 0) break;
+    startAt = Math.max(0, startAt - PAGE_SIZE);
   }
-  if (latest) return latest;
 
-  // No "To Do" transition in the retained window — the issue was likely created directly into
-  // that status, so fall back to its creation time.
+  // No "To Do" transition anywhere in the changelog — the issue was created directly into that
+  // status, so fall back to its creation time.
   const issueRes = await fetch(`${jiraBase()}/rest/api/3/issue/${issueKey}?fields=created`, {
     headers,
     cache: "no-store",

@@ -65,9 +65,14 @@ function markDispatchedLocally(key: string): void {
   localDispatchMarks.set(key, now);
 }
 
-function wasDispatchedLocallyRecently(key: string): boolean {
+// Same stint-scoping as the Jira comment marker (see DISPATCH_MARKER above) — otherwise this
+// fallback reintroduces the exact bug it was added to guard against, just via a different path:
+// blocking a legitimate rapid re-dispatch with no way to recover since nothing retries it.
+function wasDispatchedLocallyRecently(key: string, stintStart: number | null): boolean {
   const ts = localDispatchMarks.get(key);
-  return ts !== undefined && Date.now() - ts < DISPATCH_DEDUPE_WINDOW_MS;
+  if (ts === undefined) return false;
+  if (stintStart !== null) return ts >= stintStart;
+  return Date.now() - ts < DISPATCH_DEDUPE_WINDOW_MS;
 }
 
 function withDispatchLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -179,13 +184,17 @@ export async function runAutoDispatch(
     }
 
     await withDispatchLock(issue.key, async () => {
-      let alreadyDispatched = wasDispatchedLocallyRecently(issue.key);
+      let stintStart: number | null = null;
+      try {
+        stintStart = await getCurrentToDoStintStart(issue.key);
+      } catch {
+        // Can't resolve the current stint — checks below fall back to a short window.
+      }
+
+      let alreadyDispatched = wasDispatchedLocallyRecently(issue.key, stintStart);
       if (!alreadyDispatched) {
         try {
-          const [comments, stintStart] = await Promise.all([
-            getIssueComments(issue.key),
-            getCurrentToDoStintStart(issue.key),
-          ]);
+          const comments = await getIssueComments(issue.key);
           const now = Date.now();
           alreadyDispatched = comments.some((c) => {
             if (!c.body.includes(DISPATCH_MARKER)) return false;
