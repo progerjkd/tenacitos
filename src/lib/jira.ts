@@ -179,6 +179,40 @@ export interface JiraComment {
 
 // Newest-first, capped at 20: callers that need this (dedupe checks) only ever care about
 // recent comments, so this avoids paginating through an issue's full history to find them.
+// The ms-epoch when this issue most recently transitioned into "To Do" — i.e. the start of its
+// current stint. Falls back to the issue's creation time if it has never had an explicit
+// transition into "To Do" recorded (e.g. it was created directly in that status). Returns null if
+// the lookup itself fails, so callers can fall back to a time-window heuristic instead.
+export async function getCurrentToDoStintStart(issueKey: string): Promise<number | null> {
+  const res = await fetch(
+    `${jiraBase()}/rest/api/3/issue/${issueKey}?fields=created&expand=changelog`,
+    {
+      headers: { Authorization: jiraAuthHeader(), Accept: "application/json" },
+      cache: "no-store",
+    },
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    fields: { created: string };
+    changelog?: {
+      histories?: Array<{
+        created: string;
+        items: Array<{ field: string; toString?: string }>;
+      }>;
+    };
+  };
+  let latest = 0;
+  for (const history of data.changelog?.histories ?? []) {
+    for (const item of history.items) {
+      if (item.field === "status" && item.toString === "To Do") {
+        const t = new Date(history.created).getTime();
+        if (t > latest) latest = t;
+      }
+    }
+  }
+  return latest || new Date(data.fields.created).getTime();
+}
+
 export async function getIssueComments(issueKey: string): Promise<JiraComment[]> {
   const res = await fetch(
     `${jiraBase()}/rest/api/3/issue/${issueKey}/comment?orderBy=-created&maxResults=20`,

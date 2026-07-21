@@ -17,6 +17,7 @@ import {
   transitionIssue,
   addJiraComment,
   getIssueComments,
+  getCurrentToDoStintStart,
   type JiraIssue,
 } from "@/lib/jira";
 import { sendSlackMessage } from "@/lib/slack";
@@ -33,10 +34,12 @@ const NOTIFY_CHANNEL = "#dev";
 // calls — so re-check this marker before doing anything, rather than dispatching blind every time
 // an issue is seen in "To Do".
 //
-// Only a marker within this window counts as "already dispatched": it needs to be long enough to
-// absorb near-duplicate webhook deliveries for the *same* transition (observed ~25s apart live),
-// but short enough that a legitimate later re-dispatch — the issue cycling back to "To Do" after
-// being reopened — isn't permanently blocked by a marker from its previous run.
+// A marker only counts as "already dispatched" if it was posted during the issue's *current*
+// stint in "To Do" (per getCurrentToDoStintStart) — not merely recently. Time alone can't tell
+// apart a duplicate delivery of the same transition from a legitimate one (an issue can genuinely
+// cycle back into "To Do" seconds after leaving it — a fixed window would swallow that dispatch
+// too, and nothing would ever retry it since there's no scheduled follow-up). DISPATCH_DEDUPE_WINDOW_MS
+// is only the fallback when the stint lookup itself fails.
 const DISPATCH_MARKER = "Auto-dispatched via TenacitOS Mission Control.";
 const DISPATCH_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 
@@ -179,12 +182,18 @@ export async function runAutoDispatch(
       let alreadyDispatched = wasDispatchedLocallyRecently(issue.key);
       if (!alreadyDispatched) {
         try {
-          const comments = await getIssueComments(issue.key);
+          const [comments, stintStart] = await Promise.all([
+            getIssueComments(issue.key),
+            getCurrentToDoStintStart(issue.key),
+          ]);
           const now = Date.now();
           alreadyDispatched = comments.some((c) => {
             if (!c.body.includes(DISPATCH_MARKER)) return false;
-            const age = now - new Date(c.created).getTime();
-            return age >= 0 && age < DISPATCH_DEDUPE_WINDOW_MS;
+            const commentTime = new Date(c.created).getTime();
+            if (stintStart !== null) return commentTime >= stintStart;
+            // Couldn't resolve the current stint — fall back to a short window rather than
+            // either blocking dispatch forever or never deduping at all.
+            return now - commentTime < DISPATCH_DEDUPE_WINDOW_MS;
           });
         } catch {
           // Can't confirm either way — fail open and dispatch rather than silently drop the issue.

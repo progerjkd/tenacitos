@@ -32,6 +32,26 @@ import { extractPlainText } from "@/lib/adf";
 const NOTIFY_CHANNEL = "#dev";
 const NEEDS_INPUT_MARKER = /^needs input:/i;
 
+// Jira can redeliver the same webhook (retry after a slow response, etc.), and this route has no
+// per-event ID to key off of — so without this, a redelivered "moved to Done" event posts the
+// resolution notice twice. Checked and set synchronously (no await between them), so unlike the
+// dispatch path this needs no lock: there's no gap for a second concurrent request to interleave.
+const RESOLVED_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
+const resolvedNotifyMarks = new Map<string, number>();
+
+function wasResolvedNotifiedRecently(key: string): boolean {
+  const ts = resolvedNotifyMarks.get(key);
+  return ts !== undefined && Date.now() - ts < RESOLVED_DEDUPE_WINDOW_MS;
+}
+
+function markResolvedNotified(key: string): void {
+  const now = Date.now();
+  for (const [k, ts] of resolvedNotifyMarks) {
+    if (now - ts >= RESOLVED_DEDUPE_WINDOW_MS) resolvedNotifyMarks.delete(k);
+  }
+  resolvedNotifyMarks.set(key, now);
+}
+
 interface JiraWebhookPayload {
   webhookEvent?: string;
   issue?: {
@@ -125,6 +145,11 @@ export async function POST(request: NextRequest) {
     );
 
   if (isMovedToDone) {
+    if (wasResolvedNotifiedRecently(issueKey)) {
+      return NextResponse.json({ skipped: true, reason: "resolution already notified" });
+    }
+    markResolvedNotified(issueKey);
+
     const summary = payload.issue?.fields?.summary ?? issueKey;
     const issueUrl = `${(process.env.JIRA_BASE_URL ?? "").replace(/\/$/, "")}/browse/${issueKey}`;
 
