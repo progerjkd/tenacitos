@@ -47,6 +47,26 @@ const DISPATCH_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 // keys still run concurrently.
 const dispatchLocks = new Map<string, Promise<unknown>>();
 
+// Fallback dedupe source alongside the Jira comment marker: if posting that comment fails (rate
+// limit, transient 5xx, permissions), the marker never lands, so a later queued call would find
+// nothing and re-dispatch — recreating the exact duplicate this whole mechanism exists to prevent.
+// This in-process record survives that specific failure since it's set right after the dispatch
+// itself succeeds, independent of whether the Jira write does.
+const localDispatchMarks = new Map<string, number>();
+
+function markDispatchedLocally(key: string): void {
+  const now = Date.now();
+  for (const [k, ts] of localDispatchMarks) {
+    if (now - ts >= DISPATCH_DEDUPE_WINDOW_MS) localDispatchMarks.delete(k);
+  }
+  localDispatchMarks.set(key, now);
+}
+
+function wasDispatchedLocallyRecently(key: string): boolean {
+  const ts = localDispatchMarks.get(key);
+  return ts !== undefined && Date.now() - ts < DISPATCH_DEDUPE_WINDOW_MS;
+}
+
 function withDispatchLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const previous = dispatchLocks.get(key) ?? Promise.resolve();
   const run = previous.catch(() => {}).then(fn);
@@ -156,17 +176,19 @@ export async function runAutoDispatch(
     }
 
     await withDispatchLock(issue.key, async () => {
-      let alreadyDispatched = false;
-      try {
-        const comments = await getIssueComments(issue.key);
-        const now = Date.now();
-        alreadyDispatched = comments.some((c) => {
-          if (!c.body.includes(DISPATCH_MARKER)) return false;
-          const age = now - new Date(c.created).getTime();
-          return age >= 0 && age < DISPATCH_DEDUPE_WINDOW_MS;
-        });
-      } catch {
-        // Can't confirm either way — fail open and dispatch rather than silently drop the issue.
+      let alreadyDispatched = wasDispatchedLocallyRecently(issue.key);
+      if (!alreadyDispatched) {
+        try {
+          const comments = await getIssueComments(issue.key);
+          const now = Date.now();
+          alreadyDispatched = comments.some((c) => {
+            if (!c.body.includes(DISPATCH_MARKER)) return false;
+            const age = now - new Date(c.created).getTime();
+            return age >= 0 && age < DISPATCH_DEDUPE_WINDOW_MS;
+          });
+        } catch {
+          // Can't confirm either way — fail open and dispatch rather than silently drop the issue.
+        }
       }
 
       if (alreadyDispatched) {
@@ -202,6 +224,7 @@ export async function runAutoDispatch(
         // 3. Dispatch to agent — only now, once the state it references is
         // actually true.
         result.dispatched = await dispatchToAgent(issue, agentSlug);
+        markDispatchedLocally(issue.key);
 
         // 4. Post comment on Jira issue
         await addJiraComment(
