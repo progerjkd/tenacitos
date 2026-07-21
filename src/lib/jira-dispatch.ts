@@ -50,7 +50,15 @@ const dispatchLocks = new Map<string, Promise<unknown>>();
 function withDispatchLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const previous = dispatchLocks.get(key) ?? Promise.resolve();
   const run = previous.catch(() => {}).then(fn);
-  dispatchLocks.set(key, run.catch(() => {}));
+  const tracked = run.catch(() => {});
+  dispatchLocks.set(key, tracked);
+  // Only clear the entry if nothing has chained onto it since — otherwise this delete would drop
+  // a newer call's place in the queue and let it run concurrently with a still-in-flight one.
+  tracked.finally(() => {
+    if (dispatchLocks.get(key) === tracked) {
+      dispatchLocks.delete(key);
+    }
+  });
   return run;
 }
 
