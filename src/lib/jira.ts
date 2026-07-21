@@ -177,32 +177,34 @@ export interface JiraComment {
   created: string;
 }
 
-// Newest-first, capped at 20: callers that need this (dedupe checks) only ever care about
-// recent comments, so this avoids paginating through an issue's full history to find them.
 // The ms-epoch when this issue most recently transitioned into "To Do" — i.e. the start of its
 // current stint. Falls back to the issue's creation time if it has never had an explicit
 // transition into "To Do" recorded (e.g. it was created directly in that status). Returns null if
-// the lookup itself fails, so callers can fall back to a time-window heuristic instead.
+// the lookup fails, so callers can fall back to a time-window heuristic instead.
+//
+// Uses the dedicated paginated changelog endpoint (not `expand=changelog` on the issue itself,
+// which silently truncates) and reads from the *end* of the history — startAt is computed from
+// the reported total so the most recent entries are always the ones fetched, regardless of how
+// long the issue's full history is.
 export async function getCurrentToDoStintStart(issueKey: string): Promise<number | null> {
-  const res = await fetch(
-    `${jiraBase()}/rest/api/3/issue/${issueKey}?fields=created&expand=changelog`,
-    {
-      headers: { Authorization: jiraAuthHeader(), Accept: "application/json" },
-      cache: "no-store",
-    },
-  );
-  if (!res.ok) return null;
-  const data = (await res.json()) as {
-    fields: { created: string };
-    changelog?: {
-      histories?: Array<{
-        created: string;
-        items: Array<{ field: string; toString?: string }>;
-      }>;
-    };
+  const PAGE_SIZE = 100;
+  const changelogUrl = (startAt: number) =>
+    `${jiraBase()}/rest/api/3/issue/${issueKey}/changelog?startAt=${startAt}&maxResults=${PAGE_SIZE}`;
+  const headers = { Authorization: jiraAuthHeader(), Accept: "application/json" };
+
+  const countRes = await fetch(changelogUrl(0), { headers, cache: "no-store" });
+  if (!countRes.ok) return null;
+  const countData = (await countRes.json()) as { total: number };
+
+  const startAt = Math.max(0, countData.total - PAGE_SIZE);
+  const pageRes = await fetch(changelogUrl(startAt), { headers, cache: "no-store" });
+  if (!pageRes.ok) return null;
+  const page = (await pageRes.json()) as {
+    values: Array<{ created: string; items: Array<{ field: string; toString?: string }> }>;
   };
+
   let latest = 0;
-  for (const history of data.changelog?.histories ?? []) {
+  for (const history of page.values) {
     for (const item of history.items) {
       if (item.field === "status" && item.toString === "To Do") {
         const t = new Date(history.created).getTime();
@@ -210,7 +212,17 @@ export async function getCurrentToDoStintStart(issueKey: string): Promise<number
       }
     }
   }
-  return latest || new Date(data.fields.created).getTime();
+  if (latest) return latest;
+
+  // No "To Do" transition in the retained window — the issue was likely created directly into
+  // that status, so fall back to its creation time.
+  const issueRes = await fetch(`${jiraBase()}/rest/api/3/issue/${issueKey}?fields=created`, {
+    headers,
+    cache: "no-store",
+  });
+  if (!issueRes.ok) return null;
+  const issueData = (await issueRes.json()) as { fields: { created: string } };
+  return new Date(issueData.fields.created).getTime();
 }
 
 export async function getIssueComments(issueKey: string): Promise<JiraComment[]> {

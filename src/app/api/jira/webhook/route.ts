@@ -36,6 +36,8 @@ const NEEDS_INPUT_MARKER = /^needs input:/i;
 // per-event ID to key off of — so without this, a redelivered "moved to Done" event posts the
 // resolution notice twice. Checked and set synchronously (no await between them), so unlike the
 // dispatch path this needs no lock: there's no gap for a second concurrent request to interleave.
+// The window alone would also swallow a legitimate reopen-then-reclose within it, so that case is
+// handled separately below by clearing the mark as soon as the issue leaves Done.
 const RESOLVED_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 const resolvedNotifyMarks = new Map<string, number>();
 
@@ -108,6 +110,18 @@ export async function POST(request: NextRequest) {
 
   if (!issueKey) {
     return NextResponse.json({ skipped: true, reason: "no issue key" });
+  }
+
+  // Clear any resolved-notification mark once the issue leaves Done, so a legitimate reopen +
+  // re-close within the dedupe window isn't mistaken for a redelivery of the earlier resolution.
+  const movedAwayFromDone = payload.changelog?.items?.some(
+    (item) =>
+      item.field === "status" &&
+      item.fromString?.toLowerCase() === "done" &&
+      item.toString?.toLowerCase() !== "done",
+  );
+  if (movedAwayFromDone) {
+    resolvedNotifyMarks.delete(issueKey);
   }
 
   // Comment-added relay: an agent stuck mid-task posts a Jira comment starting
