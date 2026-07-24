@@ -61,6 +61,26 @@ function markResolvedNotified(key: string): void {
   resolvedNotifyMarks.set(key, now);
 }
 
+// Same redelivery concern as the resolution notice above, applied to the human-reply relay: a
+// redelivered comment_created event has no other identity to dedupe on here, so without this a
+// retried delivery calls sessions.send a second time for the same reply, making the agent act on
+// (or repeat work for) one human answer twice.
+const RELAY_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
+const relayedCommentMarks = new Map<string, number>();
+
+function wasCommentRelayedRecently(commentId: string): boolean {
+  const ts = relayedCommentMarks.get(commentId);
+  return ts !== undefined && Date.now() - ts < RELAY_DEDUPE_WINDOW_MS;
+}
+
+function markCommentRelayed(commentId: string): void {
+  const now = Date.now();
+  for (const [k, ts] of relayedCommentMarks) {
+    if (now - ts >= RELAY_DEDUPE_WINDOW_MS) relayedCommentMarks.delete(k);
+  }
+  relayedCommentMarks.set(commentId, now);
+}
+
 interface JiraWebhookPayload {
   webhookEvent?: string;
   issue?: {
@@ -74,6 +94,7 @@ interface JiraWebhookPayload {
     };
   };
   comment?: {
+    id?: string;
     body?: unknown;
     author?: { displayName?: string };
   };
@@ -168,6 +189,13 @@ export async function POST(request: NextRequest) {
   // isMovedToToDo dispatch check below, instead of this branch swallowing
   // it and the ticket never getting auto-dispatched.
   if (commentBody && event === "comment_created") {
+    // Jira can redeliver the same comment_created event; without this a retried delivery calls
+    // sessions.send a second time for the same human reply.
+    const commentId = payload.comment?.id;
+    if (commentId && wasCommentRelayedRecently(commentId)) {
+      return NextResponse.json({ skipped: true, reason: "comment already relayed" });
+    }
+
     // Route the reply to whichever agent this ticket was actually dispatched
     // to (read off the Jira assignee, set by runAutoDispatch's best-effort
     // per-agent assignment), not always DEFAULT_AGENT — a ticket dispatched
@@ -185,8 +213,17 @@ export async function POST(request: NextRequest) {
     // a never-dispatched ticket can't spin up an orphan agent session. `since: 0` forces a full
     // paginated scan of the comment history rather than just the newest page — the marker (if any)
     // could have scrolled off the front long ago on a ticket with a lot of comment activity.
-    const priorComments = await getIssueComments(issueKey, { since: 0 }).catch(() => []);
-    const hasBeenDispatched = priorComments.some((c) => isDispatchMarker(c.body));
+    //
+    // A failed lookup here is genuinely ambiguous, not evidence of "not dispatched" — fail open
+    // and allow the relay rather than silently and permanently dropping a real reply (the webhook
+    // still returns 200, so Jira won't redeliver it for us to catch on a retry).
+    let hasBeenDispatched: boolean;
+    try {
+      const priorComments = await getIssueComments(issueKey, { since: 0 });
+      hasBeenDispatched = priorComments.some((c) => isDispatchMarker(c.body));
+    } catch {
+      hasBeenDispatched = true;
+    }
 
     const decision = decideCommentRelay({
       issueKey,
@@ -205,6 +242,7 @@ export async function POST(request: NextRequest) {
         console.error(`Failed to relay comment for ${issueKey}:`, err);
         return null;
       });
+      if (commentId) markCommentRelayed(commentId);
       return NextResponse.json({ ok: true, issueKey, event: "comment_relayed" });
     }
 
