@@ -15,18 +15,50 @@ import {
   getSingleIssue,
   getTransitions,
   transitionIssue,
+  assignIssue,
   addJiraComment,
   getIssueComments,
   getCurrentToDoStintStart,
   type JiraIssue,
 } from "@/lib/jira";
+import { sessionKeyForTicket } from "@/lib/jira-agent-session";
 import { sendSlackMessage } from "@/lib/slack";
 import { callGateway } from "@/lib/gateway";
 import { createNotification } from "@/lib/notifications";
 
 const PROJECT = "NEURALOPS";
-const DEFAULT_AGENT = "sage";
+export const DEFAULT_AGENT = "sage";
 const NOTIFY_CHANNEL = "#dev";
+
+// Each openclaw agent has its own Jira service account (see docs/jira-agent-accounts.md),
+// so tickets show the actual agent working them as the assignee. Account IDs live in env
+// vars rather than agents-config.ts since they're Jira-specific and only this module needs
+// them.
+const AGENT_JIRA_ACCOUNT_ENV: Record<string, string> = {
+  sage: "JIRA_ACCOUNT_ID_SAGE",
+  main: "JIRA_ACCOUNT_ID_MAIN",
+  inbox: "JIRA_ACCOUNT_ID_INBOX",
+  brief: "JIRA_ACCOUNT_ID_BRIEF",
+  ghostwriter: "JIRA_ACCOUNT_ID_GHOSTWRITER",
+  qa: "JIRA_ACCOUNT_ID_QA",
+  playsmith: "JIRA_ACCOUNT_ID_PLAYSMITH",
+};
+
+function jiraAccountIdForAgent(agentSlug: string): string | undefined {
+  const envVar = AGENT_JIRA_ACCOUNT_ENV[agentSlug];
+  return envVar ? process.env[envVar] : undefined;
+}
+
+// Reverse of jiraAccountIdForAgent: given a Jira accountId (e.g. an issue's
+// current assignee), find which agent slug it belongs to. Used by the
+// webhook's comment relay to route a reply to whichever agent a ticket was
+// actually dispatched to, instead of always assuming DEFAULT_AGENT.
+export function agentSlugForJiraAccountId(accountId: string): string | undefined {
+  for (const [slug, envVar] of Object.entries(AGENT_JIRA_ACCOUNT_ENV)) {
+    if (process.env[envVar] === accountId) return slug;
+  }
+  return undefined;
+}
 
 // Marker left on the Jira comment posted by step 4 below. Jira can deliver more than one
 // qualifying webhook event for the same status change (e.g. issue_created firing alongside a
@@ -49,7 +81,11 @@ function buildDispatchMarker(stintStart: number | null): string {
   return stintStart === null ? DISPATCH_MARKER : `${DISPATCH_MARKER} [stint:${stintStart}]`;
 }
 
-function isDispatchMarker(body: string): boolean {
+// Exported so the webhook's comment relay can check whether a ticket has ever actually been
+// dispatched through this pipeline, rather than inferring it from current status — a status other
+// than "To Do" doesn't prove dispatch happened (e.g. the dashboard's manual Start action moves an
+// issue straight to "In Progress" without going through runAutoDispatch).
+export function isDispatchMarker(body: string): boolean {
   return body.includes(DISPATCH_MARKER);
 }
 
@@ -124,6 +160,7 @@ export interface DispatchResult {
   summary: string;
   dispatched: boolean;
   transitioned: boolean;
+  assigned: boolean;
   slackNotified: boolean;
   skipped?: boolean;
   error?: string;
@@ -154,10 +191,12 @@ async function dispatchToAgent(issue: JiraIssue, agentSlug: string): Promise<boo
     `on you from here.`,
   ].join("\n");
 
-  // Always targets Sage's own persistent session (not a per-ticket one) — Sage is the
-  // one long-lived agent in this pipeline; it fans work out to isolated specialist
-  // sessions itself via its native subagent (allowAgents) capability.
-  const sessionKey = `agent:${agentSlug}:main`;
+  // One session per ticket, not a single shared session — each ticket is a
+  // fully independent conversation, so a blocked ticket can't hold up
+  // dispatch/work on any other ticket, and a later reply on this issue (see
+  // the webhook route's comment relay) routes unambiguously back to the same
+  // session. See docs/superpowers/specs/2026-07-16-jira-dispatch-per-ticket-sessions-design.md.
+  const sessionKey = sessionKeyForTicket(agentSlug, issue.key);
   await callGateway("sessions.send", { key: sessionKey, message, timeoutMs: 0 });
   return true;
 }
@@ -194,12 +233,14 @@ export async function runAutoDispatch(
       summary: issue.summary,
       dispatched: false,
       transitioned: false,
+      assigned: false,
       slackNotified: false,
     };
 
     if (dryRun) {
       result.dispatched = true;
       result.transitioned = true;
+      result.assigned = true;
       result.slackNotified = true;
       results.push(result);
       continue;
@@ -257,24 +298,34 @@ export async function runAutoDispatch(
           result.transitioned = true;
         }
 
-        // 2. Send Slack notification — also happens before dispatch, for the
+        // 2. Assign to the agent's own Jira service account, if one is
+        // configured. Best-effort — a missing/deactivated account shouldn't
+        // block the rest of the dispatch.
+        const accountId = jiraAccountIdForAgent(agentSlug);
+        if (accountId) {
+          result.assigned = await assignIssue(issue.key, accountId)
+            .then(() => true)
+            .catch(() => false);
+        }
+
+        // 3. Send Slack notification — also happens before dispatch, for the
         // same reason: the dispatch message claims it's already gone out.
         const slackText = `🤖 *${issue.key}* sent to \`${agentSlug}\` for triage\n*${issue.summary}*\n<${issue.url}|View in Jira>`;
         const slackResult = await sendSlackMessage(NOTIFY_CHANNEL, slackText);
         result.slackNotified = slackResult.ok;
 
-        // 3. Dispatch to agent — only now, once the state it references is
+        // 4. Dispatch to agent — only now, once the state it references is
         // actually true.
         result.dispatched = await dispatchToAgent(issue, agentSlug);
         markDispatchedLocally(issue.key, stintStart);
 
-        // 4. Post comment on Jira issue
+        // 5. Post comment on Jira issue
         await addJiraComment(
           issue.key,
           `🤖 Sent to ${agentSlug} for triage and assignment.\n${buildDispatchMarker(stintStart)}`,
         ).catch(() => null);
 
-        // 5. Create TenacitOS notification
+        // 6. Create TenacitOS notification
         await createNotification({
           title: `Agent dispatched: ${issue.key}`,
           message: issue.summary,

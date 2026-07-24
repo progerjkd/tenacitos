@@ -172,6 +172,21 @@ export async function getSingleIssue(issueKey: string): Promise<JiraIssue | null
   };
 }
 
+export async function assignIssue(issueKey: string, accountId: string): Promise<void> {
+  const res = await fetch(`${jiraBase()}/rest/api/3/issue/${issueKey}/assignee`, {
+    method: "PUT",
+    headers: {
+      Authorization: jiraAuthHeader(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ accountId }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`Jira assign failed: ${res.status}`);
+  }
+}
+
 export interface JiraComment {
   body: string;
   created: string;
