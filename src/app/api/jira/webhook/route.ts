@@ -23,8 +23,13 @@
  * a `comment.body` field (comment-added relay, event name not checked).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getSingleIssue } from "@/lib/jira";
-import { runAutoDispatch, DEFAULT_AGENT, agentSlugForJiraAccountId } from "@/lib/jira-dispatch";
+import { getSingleIssue, getIssueComments } from "@/lib/jira";
+import {
+  runAutoDispatch,
+  DEFAULT_AGENT,
+  agentSlugForJiraAccountId,
+  isDispatchMarker,
+} from "@/lib/jira-dispatch";
 import { decideCommentRelay } from "@/lib/jira-agent-session";
 import { callGateway } from "@/lib/gateway";
 import { sendSlackMessage } from "@/lib/slack";
@@ -174,9 +179,18 @@ export async function POST(request: NextRequest) {
     const agentSlug =
       (assigneeAccountId && agentSlugForJiraAccountId(assigneeAccountId)) || DEFAULT_AGENT;
 
+    // A status other than "To Do" doesn't prove this ticket was actually dispatched — the
+    // dashboard's manual Start action can move an issue straight to "In Progress" without ever
+    // calling runAutoDispatch. Check the durable dispatch marker comment instead, so a comment on
+    // a never-dispatched ticket can't spin up an orphan agent session. `since: 0` forces a full
+    // paginated scan of the comment history rather than just the newest page — the marker (if any)
+    // could have scrolled off the front long ago on a ticket with a lot of comment activity.
+    const priorComments = await getIssueComments(issueKey, { since: 0 }).catch(() => []);
+    const hasBeenDispatched = priorComments.some((c) => isDispatchMarker(c.body));
+
     const decision = decideCommentRelay({
       issueKey,
-      issueStatus: payload.issue?.fields?.status?.name ?? "",
+      hasBeenDispatched,
       commentBody,
       agentSlug,
       authorName: payload.comment?.author?.displayName ?? "a Jira user",

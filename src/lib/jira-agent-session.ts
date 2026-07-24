@@ -47,16 +47,20 @@ export interface CommentRelayDecision {
 
 export function decideCommentRelay(params: {
   issueKey: string;
-  issueStatus: string;
+  hasBeenDispatched: boolean;
   commentBody: string;
   agentSlug: string;
   authorName: string;
 }): CommentRelayDecision {
-  const { issueKey, issueStatus, commentBody, agentSlug, authorName } = params;
+  const { issueKey, hasBeenDispatched, commentBody, agentSlug, authorName } = params;
 
   if (!commentBody) return { relay: false };
   if (BOT_COMMENT_MARKER.test(commentBody)) return { relay: false };
-  if (issueStatus === "To Do") return { relay: false };
+  // Whether this specific ticket has actually gone through runAutoDispatch — not merely "not To
+  // Do" — since status can change by other paths (e.g. the dashboard's manual Start action) without
+  // ever creating an agent session. Relaying anyway would send a comment into a session that never
+  // received the ticket brief, creating an orphan session and triggering unintended work.
+  if (!hasBeenDispatched) return { relay: false };
 
   const truncatedBody =
     commentBody.length > MAX_RELAYED_COMMENT_LENGTH

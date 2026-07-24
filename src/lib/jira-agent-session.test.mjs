@@ -35,7 +35,7 @@ test("decideCommentRelay skips the bot's own status comments", () => {
   const { decideCommentRelay } = loadModule();
   const decision = decideCommentRelay({
     issueKey: "NEURALOPS-24",
-    issueStatus: "In Progress",
+    hasBeenDispatched: true,
     commentBody: "🤖 Sent to sage for triage and assignment.\nAuto-dispatched via TenacitOS Mission Control.",
     agentSlug: "sage",
     authorName: "Roger Vasconcelos",
@@ -47,7 +47,7 @@ test("decideCommentRelay skips comments on tickets that haven't been dispatched 
   const { decideCommentRelay } = loadModule();
   const decision = decideCommentRelay({
     issueKey: "NEURALOPS-24",
-    issueStatus: "To Do",
+    hasBeenDispatched: false,
     commentBody: "any human comment",
     agentSlug: "sage",
     authorName: "Roger Vasconcelos",
@@ -59,7 +59,7 @@ test("decideCommentRelay skips empty comment bodies", () => {
   const { decideCommentRelay } = loadModule();
   const decision = decideCommentRelay({
     issueKey: "NEURALOPS-24",
-    issueStatus: "In Progress",
+    hasBeenDispatched: true,
     commentBody: "",
     agentSlug: "sage",
     authorName: "Roger Vasconcelos",
@@ -71,7 +71,7 @@ test("decideCommentRelay relays a human reply on a ticket already in progress, f
   const { decideCommentRelay } = loadModule();
   const decision = decideCommentRelay({
     issueKey: "NEURALOPS-23",
-    issueStatus: "In Progress",
+    hasBeenDispatched: true,
     commentBody: "1. AWS, adjust IAM as required. 2. neuralops-dev.",
     agentSlug: "sage",
     authorName: "Jamie Smith",
@@ -89,7 +89,7 @@ test("decideCommentRelay truncates comment bodies longer than 4000 characters", 
   const longBody = "a".repeat(4001);
   const decision = decideCommentRelay({
     issueKey: "NEURALOPS-23",
-    issueStatus: "In Progress",
+    hasBeenDispatched: true,
     commentBody: longBody,
     agentSlug: "sage",
     authorName: "Jamie Smith",

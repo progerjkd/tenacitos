@@ -81,7 +81,11 @@ function buildDispatchMarker(stintStart: number | null): string {
   return stintStart === null ? DISPATCH_MARKER : `${DISPATCH_MARKER} [stint:${stintStart}]`;
 }
 
-function isDispatchMarker(body: string): boolean {
+// Exported so the webhook's comment relay can check whether a ticket has ever actually been
+// dispatched through this pipeline, rather than inferring it from current status — a status other
+// than "To Do" doesn't prove dispatch happened (e.g. the dashboard's manual Start action moves an
+// issue straight to "In Progress" without going through runAutoDispatch).
+export function isDispatchMarker(body: string): boolean {
   return body.includes(DISPATCH_MARKER);
 }
 
