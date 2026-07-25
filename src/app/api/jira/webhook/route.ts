@@ -196,6 +196,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ skipped: true, reason: "comment already relayed" });
     }
 
+    // A ticket that's currently sitting in "To Do" hasn't been dispatched for its *current* stint
+    // — even if it carries a dispatch marker from a previous stint (it was worked once, then
+    // reopened). Relaying into that stale session before/instead of a fresh dispatch would land
+    // the reply somewhere not actively being worked. Checked unconditionally, ahead of the marker
+    // lookup below, since it's free (already on the payload) and this case doesn't need it.
+    if (payload.issue?.fields?.status?.name === "To Do") {
+      return NextResponse.json({ skipped: true, reason: "ticket is in To Do" });
+    }
+
     // Route the reply to whichever agent this ticket was actually dispatched
     // to (read off the Jira assignee, set by runAutoDispatch's best-effort
     // per-agent assignment), not always DEFAULT_AGENT — a ticket dispatched
