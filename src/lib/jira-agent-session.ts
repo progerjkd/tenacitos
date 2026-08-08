@@ -98,7 +98,15 @@ export function buildAgentDispatchParams(params: {
 }): AgentDispatchParams {
   const { agentSlug, issueKey, message, stintStart, slackChannelId } = params;
   const sessionKey = sessionKeyForTicket(agentSlug, issueKey);
-  const idempotencyKey = `${issueKey}:${stintStart ?? "unknown"}`;
+  // When the stint can't be resolved, there's no stable identity to dedupe against — the
+  // gateway's "agent" RPC treats a repeated idempotencyKey as "already handled" and replays a
+  // cached {accepted: true} response WITHOUT re-running the agent (DEDUPE_TTL_MS = 5 minutes).
+  // A fixed "unknown" suffix would make every null-stint call within that window collide,
+  // silently no-opping genuine manual re-triggers (e.g. re-dispatching a ticket that's already
+  // "In Progress"). Use a fresh random suffix per call instead — Date.now() alone isn't enough,
+  // since back-to-back calls routinely land in the same millisecond — so this case is never
+  // deduplicable by identity, matching the fact that it never had one.
+  const idempotencyKey = `${issueKey}:${stintStart ?? `unknown-${crypto.randomUUID()}`}`;
 
   if (!slackChannelId) {
     return { sessionKey, message, deliver: false, idempotencyKey };
