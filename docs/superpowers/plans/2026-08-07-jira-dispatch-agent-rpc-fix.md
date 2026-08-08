@@ -31,7 +31,7 @@
 - Produces: `AgentDispatchParams` type: `{ sessionKey: string; message: string; deliver: boolean; channel?: "slack"; to?: string; idempotencyKey: string }`, exported from `@/lib/jira-agent-session`.
 - Consumes (unchanged, already exist): `sessionKeyForTicket(agentSlug, issueKey): string` from the same file; `resolveChannelId(channelName: string): Promise<string | null>` from `@/lib/slack`; `callGateway<T>(method: string, params?: unknown): Promise<T>` from `@/lib/gateway`.
 
-- [ ] **Step 1: Write the failing tests for `buildAgentDispatchParams`**
+- [x] **Step 1: Write the failing tests for `buildAgentDispatchParams`**
 
 Append to `src/lib/jira-agent-session.test.mjs` (after the existing `decideCommentRelay` tests, same file — `loadModule()` is already defined at the top and needs no changes):
 
@@ -85,12 +85,12 @@ test("buildAgentDispatchParams falls back to an 'unknown' idempotency suffix whe
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd ~/workspace/tenacitos && node --test src/lib/jira-agent-session.test.mjs`
 Expected: the 3 new tests FAIL with something like `buildAgentDispatchParams is not a function` (it doesn't exist yet). The existing tests in this file still PASS.
 
-- [ ] **Step 3: Implement `buildAgentDispatchParams` in `jira-agent-session.ts`**
+- [x] **Step 3: Implement `buildAgentDispatchParams` in `jira-agent-session.ts`**
 
 Append to the end of `src/lib/jira-agent-session.ts` (after `decideCommentRelay`):
 
@@ -139,12 +139,12 @@ export function buildAgentDispatchParams(params: {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd ~/workspace/tenacitos && node --test src/lib/jira-agent-session.test.mjs`
 Expected: all tests PASS, including the 3 new ones and every pre-existing test in this file.
 
-- [ ] **Step 5: Wire `dispatchToAgent` in `jira-dispatch.ts` to use the new helper and the `agent` RPC method**
+- [x] **Step 5: Wire `dispatchToAgent` in `jira-dispatch.ts` to use the new helper and the `agent` RPC method**
 
 In `src/lib/jira-dispatch.ts`, change the imports (lines 13–27) from:
 
@@ -266,12 +266,12 @@ to:
 
 (`stintStart` is already in scope at that call site — it's declared earlier in the same `withDispatchLock` callback.)
 
-- [ ] **Step 6: Run the full test suite, typecheck, and lint**
+- [x] **Step 6: Run the full test suite, typecheck, and lint**
 
 Run: `cd ~/workspace/tenacitos && npm test && npx tsc --noEmit && npm run lint`
 Expected: all PASS, no type errors, no lint errors. If `tsc` complains about the `channel?: "slack"` literal type when spread into `callGateway`'s `params?: unknown`, that's expected to be fine since `unknown` accepts any value — if it isn't, check whether `AgentDispatchParams` needs to be passed through an explicit cast; don't silently loosen the type to `any`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd ~/workspace/tenacitos
@@ -302,7 +302,7 @@ EOF
 
 This is a manual/production-gated task — do not treat it as optional or automatable. The point of this task existing is that the previous fix (PR #27) shipped with an equivalent step unchecked, and that is specifically how the `sessions.send` bug went undetected in production for two weeks.
 
-- [ ] **Step 1: Push the branch and open a PR**
+- [x] **Step 1: Push the branch and open a PR**
 
 ```bash
 cd ~/workspace/tenacitos
@@ -323,7 +323,7 @@ Implementation plan: `docs/superpowers/plans/2026-08-07-jira-dispatch-agent-rpc-
 - [x] `npm test` — all passing
 - [x] `npm run lint` — clean
 - [x] `npx tsc --noEmit` — clean
-- [ ] Manual production verification (see plan Task 2) — do not merge without checking this box
+- [x] Manual production verification (see plan Task 2) — do not merge without checking this box
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -332,7 +332,7 @@ EOF
 
 Follow the standing PR-review workflow (wait for the Codex bot review or clean-PR reaction, address any findings, resolve threads) before merging.
 
-- [ ] **Step 2: Deploy the merged fix**
+- [x] **Step 2: Deploy the merged fix**
 
 After the PR merges, from `~/workspace/openclaw-terraform`:
 
@@ -348,7 +348,7 @@ This pulls `tenacitos`'s latest `main` on the box and rebuilds/restarts the `ten
 
 Expected: the `tenacitos` line shows the new commit hash with `✓ up to date` (not `⚠ behind origin`).
 
-- [ ] **Step 3: Watch the gateway log while re-triggering NEURALOPS-30's dispatch**
+- [x] **Step 3: Watch the gateway log while re-triggering NEURALOPS-30's dispatch**
 
 Open a log tail first:
 
@@ -373,6 +373,17 @@ Expected response: `{"summary":{"total":1,"dispatched":1,...},...}` with `dispat
 
 Expected in the gateway log: a `res ✓` (not `res ✗`) for method `agent` — not `sessions.send` — with no `INVALID_REQUEST`/`session not found`.
 
-- [ ] **Step 4: Confirm the Jira comment and the (new) Slack reply both land**
+- [x] **Step 4: Confirm the Jira comment and the (new) Slack reply both land**
 
 Check `https://neuralops.atlassian.net/browse/NEURALOPS-30` for the `🤖 Sent to sage for triage and assignment.` marker comment (this already worked before the fix — confirms it's still not regressed), and watch `#dev` in Slack for a **second**, later message once the agent's turn completes — this is the new native-delivery behavior and did not happen before this fix. If it doesn't appear within a few minutes, check the gateway log for the run's completion and any delivery error.
+
+## Verified 2026-08-08
+
+Task 2 was executed against production after merge (PR #29). First attempt caught a real deploy-ordering gap: `./setup-mission-control.sh` was run before the merge commit's own "Build & Deploy" GitHub Actions run had finished publishing the `:latest` image, so it silently redeployed the stale two-week-old image (`org.opencontainers.image.revision=7efaca7`) — the auto-dispatch call correctly reproduced the original `session not found` error, exactly as designed to catch this class of mistake. Waited for the GH Actions run to reach `completed`/`success` (its own `Deploy` job redeployed the container automatically), confirmed the running image's revision label matched the merge commit (`00b9ee1`), then re-ran verification:
+
+- `POST /api/jira/auto-dispatch {"issueKey":"NEURALOPS-30"}` → `{"summary":{"total":1,"dispatched":1,"errors":0,"skipped":0},...}`
+- Gateway log: `res ✓ agent 233ms runId=NEURALOPS-30:1786154322619` (method `agent`, not `sessions.send`; no `INVALID_REQUEST`)
+- Jira: real triage comment posted (NEURALOPS-30#comment-10269) — resume/JD alignment map, gap analysis, and a follow-up dispatch to another agent for the actual deliverable
+- Slack `#dev`: the new native-delivery message landed (2026-08-08 01:54:15 PDT, ts `1786179255.714479`) — the agent's real triage summary, not just the static "sent for triage" ping
+
+First genuinely successful end-to-end run of this pipeline.
