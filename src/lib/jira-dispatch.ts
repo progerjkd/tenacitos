@@ -50,8 +50,7 @@ function jiraAccountIdForAgent(agentSlug: string): string | undefined {
 }
 
 // Parallel to AGENT_JIRA_ACCOUNT_ENV above, but for the API token needed to post a comment AS
-// that agent's own account, rather than just assigning tickets to it. Each agent's email is a
-// literal constant (matches its Atlassian account) — no lookup needed, unlike accountId.
+// that agent's own account, rather than just assigning tickets to it.
 const AGENT_JIRA_TOKEN_ENV: Record<string, string> = {
   sage: "JIRA_API_TOKEN_SAGE",
   main: "JIRA_API_TOKEN_MAIN",
@@ -60,6 +59,21 @@ const AGENT_JIRA_TOKEN_ENV: Record<string, string> = {
   ghostwriter: "JIRA_API_TOKEN_GHOSTWRITER",
   qa: "JIRA_API_TOKEN_QA",
   playsmith: "JIRA_API_TOKEN_PLAYSMITH",
+};
+
+// Real Atlassian account emails — named after each agent's display name (see
+// agents-config.ts's AGENT_DEFS), NOT its internal slug. sage has no agents-config.ts
+// entry (gateway-level coordinator, not a dashboard agent) but its slug and display
+// name are both "sage". Confirmed against the actual Atlassian admin user list —
+// do not derive this from the slug, "sage" is the only agent where slug == name.
+const AGENT_JIRA_EMAIL: Record<string, string> = {
+  sage: "sage@neuralops.ca",
+  main: "max@neuralops.ca",
+  inbox: "iris@neuralops.ca",
+  brief: "quinn@neuralops.ca",
+  ghostwriter: "echo@neuralops.ca",
+  qa: "vale@neuralops.ca",
+  playsmith: "pixel@neuralops.ca",
 };
 
 // Returns undefined (falls back to Roger's global credentials in addJiraComment) when the
@@ -72,7 +86,9 @@ function jiraCommentCredentialsForAgent(
   const envVar = AGENT_JIRA_TOKEN_ENV[agentSlug];
   const token = envVar ? process.env[envVar] : undefined;
   if (!token) return undefined;
-  return { email: `${agentSlug}@neuralops.ca`, token };
+  const email = AGENT_JIRA_EMAIL[agentSlug];
+  if (!email) return undefined;
+  return { email, token };
 }
 
 // Reverse of jiraAccountIdForAgent: given a Jira accountId (e.g. an issue's
@@ -374,7 +390,10 @@ export async function runAutoDispatch(
           issue.key,
           `🤖 Sent to ${agentSlug} for triage and assignment.\n${buildDispatchMarker(stintStart)}`,
           jiraCommentCredentialsForAgent(agentSlug),
-        ).catch(() => null);
+        ).catch((err) => {
+          console.error(`Failed to post dispatch marker comment on ${issue.key}:`, err);
+          return null;
+        });
 
         // 6. Create TenacitOS notification
         await createNotification({
