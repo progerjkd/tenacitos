@@ -334,7 +334,7 @@ fi
 
 AGENT_SLUG="$1"
 API_TOKEN="$2"
-AGENT_EMAIL="${AGENT_SLUG}@neuralops.ca"
+AGENT_EMAIL="${AGENT_SLUG}@neuralops.ca"  # see note below — this line was wrong, fixed in review
 SERVER_NAME="atlassian-${AGENT_SLUG}"
 
 if ! ssh -o ConnectTimeout=10 -o BatchMode=yes ubuntu@"$SSH_HOST" true 2>/dev/null; then
@@ -413,6 +413,18 @@ Make it executable:
 ```bash
 chmod +x add-agent-jira-identity.sh
 ```
+
+**Note (added after implementation and review):** the code block above is the plan's original,
+as-written version — kept for the TDD/implementation narrative. The actual shipped script diverged
+from it across two review rounds and is meaningfully more robust: the `AGENT_EMAIL` line above is
+wrong (it was templated from the agent's slug; the real script maps slug → confirmed real Atlassian
+account email, e.g. `main` → `max@neuralops.ca`, not `main@neuralops.ca`), `tools.allow` is never
+touched (only `tools.deny`, since `tools.allow` is a genuinely restrictive layer — confirmed against
+the live gateway's own source), tokens are redacted before being printed and cleaned up on exit, the
+config is written to the host path with correct ownership rather than via `docker cp`, and the SSH
+probe falls back to the public IP + `alternate_ssh_port` when Tailscale is unreachable (matching
+`setup-claude-cli.sh`'s established pattern). Treat `add-agent-jira-identity.sh` itself as the
+source of truth, not this snapshot.
 
 - [ ] **Step 2: Verify the JSON transformation with a placeholder token**
 
