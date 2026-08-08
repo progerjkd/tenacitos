@@ -356,7 +356,20 @@ Open a log tail first:
 ssh ubuntu@openclaw.neuralops.ca "docker logs -f openclaw-openclaw-gateway-1" | grep -i "agent\|sessions.send\|NEURALOPS-30"
 ```
 
-Then, in the Mission Control dashboard (`https://mc.neuralops.ca/jira`, or via SSH tunnel per the project's `terraform output -raw ssh_tunnel_command`), trigger a re-dispatch of NEURALOPS-30 — since its status is already "In Progress" (not "To Do"), use the dashboard's per-issue dispatch action, which calls `POST /api/jira/auto-dispatch` with `{ issueKey: "NEURALOPS-30" }` and bypasses the "To Do"-only filter that `runAutoDispatch()` applies when no `issueKey` is given.
+**Do not use the dashboard's "Dispatch to Max" button for this** — it posts to `/api/agents/dispatch` (`src/app/(dashboard)/jira/page.tsx`'s `handleDispatch`), which still calls the old `sessions.send` RPC directly (`src/app/api/agents/dispatch/route.ts:30`) against the unrelated, long-lived `agent:main:main` session. That button exercises neither the code this branch changed nor NEURALOPS-30's actual per-ticket session — it would not validate this fix.
+
+Instead, hit `/api/jira/auto-dispatch` directly with `issueKey: "NEURALOPS-30"` — this is the route that calls the now-fixed `runAutoDispatch()`/`dispatchToAgent()`, and bypasses the "To Do"-only filter that applies when no `issueKey` is given (NEURALOPS-30 is already "In Progress"). This route is gated by the `mc_auth` cookie, whose value is just `AUTH_SECRET` directly (`src/proxy.ts`'s `isAuthenticated`) — no login flow needed, just the secret itself:
+
+```bash
+ssh ubuntu@openclaw.neuralops.ca "grep '^AUTH_SECRET=' /opt/openclaw-data/workspace/mission-control/.env.local | cut -d= -f2-"
+# then, from a machine that can reach mc.neuralops.ca (or over the SSH tunnel):
+curl -s -X POST https://mc.neuralops.ca/api/jira/auto-dispatch \
+  -H "Cookie: mc_auth=<AUTH_SECRET from above>" \
+  -H "Content-Type: application/json" \
+  -d '{"issueKey":"NEURALOPS-30"}'
+```
+
+Expected response: `{"summary":{"total":1,"dispatched":1,...},...}` with `dispatched:1`, not `skipped:1` (a `skipped` result means the existing marker-comment dedupe decided this was already handled — check `alreadyDispatched` reasoning in `jira-dispatch.ts` if that happens) and not an `error` field.
 
 Expected in the gateway log: a `res ✓` (not `res ✗`) for method `agent` — not `sessions.send` — with no `INVALID_REQUEST`/`session not found`.
 
