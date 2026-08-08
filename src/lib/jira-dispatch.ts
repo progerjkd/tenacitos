@@ -49,6 +49,32 @@ function jiraAccountIdForAgent(agentSlug: string): string | undefined {
   return envVar ? process.env[envVar] : undefined;
 }
 
+// Parallel to AGENT_JIRA_ACCOUNT_ENV above, but for the API token needed to post a comment AS
+// that agent's own account, rather than just assigning tickets to it. Each agent's email is a
+// literal constant (matches its Atlassian account) — no lookup needed, unlike accountId.
+const AGENT_JIRA_TOKEN_ENV: Record<string, string> = {
+  sage: "JIRA_API_TOKEN_SAGE",
+  main: "JIRA_API_TOKEN_MAIN",
+  inbox: "JIRA_API_TOKEN_INBOX",
+  brief: "JIRA_API_TOKEN_BRIEF",
+  ghostwriter: "JIRA_API_TOKEN_GHOSTWRITER",
+  qa: "JIRA_API_TOKEN_QA",
+  playsmith: "JIRA_API_TOKEN_PLAYSMITH",
+};
+
+// Returns undefined (falls back to Roger's global credentials in addJiraComment) when the
+// agent's own token env var isn't set yet — same graceful-degradation shape as
+// jiraAccountIdForAgent above, deliberately: most agents won't have a token configured for a
+// while, and nothing here should behave differently than today until one is.
+function jiraCommentCredentialsForAgent(
+  agentSlug: string,
+): { email: string; token: string } | undefined {
+  const envVar = AGENT_JIRA_TOKEN_ENV[agentSlug];
+  const token = envVar ? process.env[envVar] : undefined;
+  if (!token) return undefined;
+  return { email: `${agentSlug}@neuralops.ca`, token };
+}
+
 // Reverse of jiraAccountIdForAgent: given a Jira accountId (e.g. an issue's
 // current assignee), find which agent slug it belongs to. Used by the
 // webhook's comment relay to route a reply to whichever agent a ticket was
@@ -341,10 +367,13 @@ export async function runAutoDispatch(
         result.dispatched = await dispatchToAgent(issue, agentSlug, stintStart);
         markDispatchedLocally(issue.key, stintStart);
 
-        // 5. Post comment on Jira issue
+        // 5. Post comment on Jira issue — as the agent's own account once it has a token
+        // configured (see jiraCommentCredentialsForAgent above), Roger's shared credential
+        // otherwise.
         await addJiraComment(
           issue.key,
           `🤖 Sent to ${agentSlug} for triage and assignment.\n${buildDispatchMarker(stintStart)}`,
+          jiraCommentCredentialsForAgent(agentSlug),
         ).catch(() => null);
 
         // 6. Create TenacitOS notification

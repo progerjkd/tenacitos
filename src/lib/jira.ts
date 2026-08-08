@@ -1,4 +1,5 @@
 import { extractPlainText } from "@/lib/adf";
+import { buildJiraAuthHeader } from "@/lib/jira-auth";
 
 export const JIRA_COLUMNS = ["To Do", "In Progress", "Done"] as const;
 export type JiraStatus = (typeof JIRA_COLUMNS)[number];
@@ -14,9 +15,10 @@ export interface JiraIssue {
   url: string;
 }
 
-function jiraAuthHeader(): string {
-  const creds = `${process.env.JIRA_USER ?? ""}:${process.env.JIRA_API_TOKEN ?? ""}`;
-  return `Basic ${Buffer.from(creds).toString("base64")}`;
+function jiraAuthHeader(credentials?: { email: string; token: string }): string {
+  const email = credentials?.email ?? process.env.JIRA_USER ?? "";
+  const token = credentials?.token ?? process.env.JIRA_API_TOKEN ?? "";
+  return buildJiraAuthHeader(email, token);
 }
 
 function jiraBase(): string {
@@ -282,11 +284,15 @@ export async function getIssueComments(
   }
 }
 
-export async function addJiraComment(issueKey: string, body: string): Promise<void> {
+export async function addJiraComment(
+  issueKey: string,
+  body: string,
+  credentials?: { email: string; token: string },
+): Promise<void> {
   const res = await fetch(`${jiraBase()}/rest/api/3/issue/${issueKey}/comment`, {
     method: "POST",
     headers: {
-      Authorization: jiraAuthHeader(),
+      Authorization: jiraAuthHeader(credentials),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
