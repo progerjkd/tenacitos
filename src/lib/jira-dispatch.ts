@@ -21,8 +21,8 @@ import {
   getCurrentToDoStintStart,
   type JiraIssue,
 } from "@/lib/jira";
-import { sessionKeyForTicket } from "@/lib/jira-agent-session";
-import { sendSlackMessage } from "@/lib/slack";
+import { buildAgentDispatchParams } from "@/lib/jira-agent-session";
+import { sendSlackMessage, resolveChannelId } from "@/lib/slack";
 import { callGateway } from "@/lib/gateway";
 import { createNotification } from "@/lib/notifications";
 
@@ -178,7 +178,11 @@ export interface AutoDispatchOutcome {
   message?: string;
 }
 
-async function dispatchToAgent(issue: JiraIssue, agentSlug: string): Promise<boolean> {
+async function dispatchToAgent(
+  issue: JiraIssue,
+  agentSlug: string,
+  stintStart: number | null,
+): Promise<boolean> {
   const message = [
     `New ticket ready for triage: ${issue.key} — ${issue.summary}`,
     ``,
@@ -191,13 +195,31 @@ async function dispatchToAgent(issue: JiraIssue, agentSlug: string): Promise<boo
     `on you from here.`,
   ].join("\n");
 
-  // One session per ticket, not a single shared session — each ticket is a
-  // fully independent conversation, so a blocked ticket can't hold up
-  // dispatch/work on any other ticket, and a later reply on this issue (see
-  // the webhook route's comment relay) routes unambiguously back to the same
-  // session. See docs/superpowers/specs/2026-07-16-jira-dispatch-per-ticket-sessions-design.md.
-  const sessionKey = sessionKeyForTicket(agentSlug, issue.key);
-  await callGateway("sessions.send", { key: sessionKey, message, timeoutMs: 0 });
+  // The gateway's "agent" RPC method resolves/creates the target session if it doesn't exist
+  // yet — unlike "sessions.send", which requires the session to already exist and throws
+  // INVALID_REQUEST otherwise. Per-ticket session keys (one independent conversation per
+  // ticket, not a single shared session) are still built the same way, inside
+  // buildAgentDispatchParams. See docs/superpowers/specs/2026-08-07-jira-dispatch-agent-rpc-fix-design.md.
+  let channelId: string | null = null;
+  try {
+    channelId = await resolveChannelId(NOTIFY_CHANNEL);
+    if (channelId === null) {
+      console.warn(
+        `Slack channel "${NOTIFY_CHANNEL}" not found; dispatching ${issue.key} without native delivery.`,
+      );
+    }
+  } catch (err) {
+    console.warn(`Slack channel resolution failed for ${issue.key}; dispatching without native delivery:`, err);
+  }
+  const params = buildAgentDispatchParams({
+    agentSlug,
+    issueKey: issue.key,
+    message,
+    stintStart,
+    slackChannelId: channelId,
+  });
+
+  await callGateway("agent", params);
   return true;
 }
 
@@ -316,7 +338,7 @@ export async function runAutoDispatch(
 
         // 4. Dispatch to agent — only now, once the state it references is
         // actually true.
-        result.dispatched = await dispatchToAgent(issue, agentSlug);
+        result.dispatched = await dispatchToAgent(issue, agentSlug, stintStart);
         markDispatchedLocally(issue.key, stintStart);
 
         // 5. Post comment on Jira issue
