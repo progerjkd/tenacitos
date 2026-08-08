@@ -200,10 +200,17 @@ async function dispatchToAgent(
   // INVALID_REQUEST otherwise. Per-ticket session keys (one independent conversation per
   // ticket, not a single shared session) are still built the same way, inside
   // buildAgentDispatchParams. See docs/superpowers/specs/2026-08-07-jira-dispatch-agent-rpc-fix-design.md.
-  const channelId = await resolveChannelId(NOTIFY_CHANNEL).catch((err) => {
+  let channelId: string | null = null;
+  try {
+    channelId = await resolveChannelId(NOTIFY_CHANNEL);
+    if (channelId === null) {
+      console.warn(
+        `Slack channel "${NOTIFY_CHANNEL}" not found; dispatching ${issue.key} without native delivery.`,
+      );
+    }
+  } catch (err) {
     console.warn(`Slack channel resolution failed for ${issue.key}; dispatching without native delivery:`, err);
-    return null;
-  });
+  }
   const params = buildAgentDispatchParams({
     agentSlug,
     issueKey: issue.key,
