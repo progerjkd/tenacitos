@@ -323,7 +323,7 @@ Implementation plan: `docs/superpowers/plans/2026-08-07-jira-dispatch-agent-rpc-
 - [x] `npm test` — all passing
 - [x] `npm run lint` — clean
 - [x] `npx tsc --noEmit` — clean
-- [x] Manual production verification (see plan Task 2) — do not merge without checking this box
+- [ ] Manual production verification (see plan Task 2) — do not merge without checking this box
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
