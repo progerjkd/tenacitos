@@ -134,12 +134,23 @@ scope, see above), but does not regress it either.
 ## Testing
 
 This repo has a real test suite: `node --test 'src/**/*.test.mjs'`, colocated `.test.mjs` files.
-No test file exists yet for `jira-dispatch.ts` — this is the first one:
+`jira-dispatch.ts` itself has `@/`-aliased imports (`@/lib/jira`, `@/lib/gateway`, `@/lib/slack`,
+`@/lib/notifications`) that this test suite has no mocking convention for yet — the two existing
+test files (`slack.test.mjs`, `jira-agent-session.test.mjs`) both work by testing
+dependency-free modules with plain TS-transpile-and-import, not by mocking `@/` imports. Rather
+than invent new mocking infrastructure for this one change, the params-building logic
+(session key, delivery shape, idempotency key) is extracted into a new pure function,
+`buildAgentDispatchParams`, in `jira-agent-session.ts` — the file this codebase already uses for
+exactly this kind of unit-testable logic (`sessionKeyForTicket`, `decideCommentRelay` already live
+there for the same reason). `dispatchToAgent` itself becomes thin glue (resolve the Slack channel,
+call the pure function, call the gateway) and is not separately unit-tested, consistent with how
+the rest of `runAutoDispatch`'s orchestration isn't unit-tested today either — only its pure
+helpers are.
 
-- `src/lib/jira-dispatch.test.mjs` (new): mock `callGateway` and assert `dispatchToAgent`
-  calls it with method `"agent"` (not `"sessions.send"`) and params
-  `{ sessionKey, message, deliver: true, channel: "slack", to: <resolved value>, idempotencyKey }`.
-  Assert the session key is still `agent:${agentSlug}:${issue.key}` (unchanged from PR #27).
+- `src/lib/jira-agent-session.test.mjs` (append): test `buildAgentDispatchParams` returns
+  `{ sessionKey, message, deliver: true, channel: "slack", to: "channel:<id>", idempotencyKey }`
+  when given a resolved Slack channel ID; returns `deliver: false` (no `channel`/`to`) when given
+  `null`; and falls back to an `"unknown"` idempotency suffix when `stintStart` is `null`.
 - Manual production verification (do not skip this time): after deploying, trigger a real test
   ticket through the full pipeline and confirm in the gateway log that `agent` (not
   `sessions.send`) is called, the session resolves without an `INVALID_REQUEST`, and the delivered
