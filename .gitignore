@@ -59,3 +59,6 @@ next-env.d.ts
 
 # Manual worktree fallback (superpowers:using-git-worktrees)
 .worktrees/
+
+# Subagent-driven-development scratch workspace (ledger, briefs, review packages)
+.superpowers/
