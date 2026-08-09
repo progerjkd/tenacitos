@@ -49,6 +49,48 @@ function jiraAccountIdForAgent(agentSlug: string): string | undefined {
   return envVar ? process.env[envVar] : undefined;
 }
 
+// Parallel to AGENT_JIRA_ACCOUNT_ENV above, but for the API token needed to post a comment AS
+// that agent's own account, rather than just assigning tickets to it.
+const AGENT_JIRA_TOKEN_ENV: Record<string, string> = {
+  sage: "JIRA_API_TOKEN_SAGE",
+  main: "JIRA_API_TOKEN_MAIN",
+  inbox: "JIRA_API_TOKEN_INBOX",
+  brief: "JIRA_API_TOKEN_BRIEF",
+  ghostwriter: "JIRA_API_TOKEN_GHOSTWRITER",
+  qa: "JIRA_API_TOKEN_QA",
+  playsmith: "JIRA_API_TOKEN_PLAYSMITH",
+};
+
+// Real Atlassian account emails — named after each agent's display name (see
+// agents-config.ts's AGENT_DEFS), NOT its internal slug. sage has no agents-config.ts
+// entry (gateway-level coordinator, not a dashboard agent) but its slug and display
+// name are both "sage". Confirmed against the actual Atlassian admin user list —
+// do not derive this from the slug, "sage" is the only agent where slug == name.
+const AGENT_JIRA_EMAIL: Record<string, string> = {
+  sage: "sage@neuralops.ca",
+  main: "max@neuralops.ca",
+  inbox: "iris@neuralops.ca",
+  brief: "quinn@neuralops.ca",
+  ghostwriter: "echo@neuralops.ca",
+  qa: "vale@neuralops.ca",
+  playsmith: "pixel@neuralops.ca",
+};
+
+// Returns undefined (falls back to Roger's global credentials in addJiraComment) when the
+// agent's own token env var isn't set yet — same graceful-degradation shape as
+// jiraAccountIdForAgent above, deliberately: most agents won't have a token configured for a
+// while, and nothing here should behave differently than today until one is.
+function jiraCommentCredentialsForAgent(
+  agentSlug: string,
+): { email: string; token: string } | undefined {
+  const envVar = AGENT_JIRA_TOKEN_ENV[agentSlug];
+  const token = envVar ? process.env[envVar] : undefined;
+  if (!token) return undefined;
+  const email = AGENT_JIRA_EMAIL[agentSlug];
+  if (!email) return undefined;
+  return { email, token };
+}
+
 // Reverse of jiraAccountIdForAgent: given a Jira accountId (e.g. an issue's
 // current assignee), find which agent slug it belongs to. Used by the
 // webhook's comment relay to route a reply to whichever agent a ticket was
@@ -341,11 +383,17 @@ export async function runAutoDispatch(
         result.dispatched = await dispatchToAgent(issue, agentSlug, stintStart);
         markDispatchedLocally(issue.key, stintStart);
 
-        // 5. Post comment on Jira issue
+        // 5. Post comment on Jira issue — as the agent's own account once it has a token
+        // configured (see jiraCommentCredentialsForAgent above), Roger's shared credential
+        // otherwise.
         await addJiraComment(
           issue.key,
           `🤖 Sent to ${agentSlug} for triage and assignment.\n${buildDispatchMarker(stintStart)}`,
-        ).catch(() => null);
+          jiraCommentCredentialsForAgent(agentSlug),
+        ).catch((err) => {
+          console.error(`Failed to post dispatch marker comment on ${issue.key}:`, err);
+          return null;
+        });
 
         // 6. Create TenacitOS notification
         await createNotification({
