@@ -87,6 +87,7 @@ export interface AgentDispatchParams {
   channel?: "slack";
   to?: string;
   idempotencyKey: string;
+  accountId?: string;
 }
 
 export function buildAgentDispatchParams(params: {
@@ -95,8 +96,15 @@ export function buildAgentDispatchParams(params: {
   message: string;
   stintStart: number | null;
   slackChannelId: string | null;
+  // Which Slack account (channels.slack.accounts.<id>) to deliver through, for agents that
+  // have their own dedicated Slack App rather than sharing the default one -- see
+  // https://github.com/openclaw/openclaw/issues/121513 (why the shared-app identity override
+  // doesn't work) and https://github.com/openclaw/openclaw/issues/121447 (why the gateway's
+  // own inbound routing can't be relied on to infer this; the caller must say so explicitly).
+  // Omitted entirely for agents on the shared default account, matching prior behavior.
+  accountId?: string;
 }): AgentDispatchParams {
-  const { agentSlug, issueKey, message, stintStart, slackChannelId } = params;
+  const { agentSlug, issueKey, message, stintStart, slackChannelId, accountId } = params;
   const sessionKey = sessionKeyForTicket(agentSlug, issueKey);
   // When the stint can't be resolved, there's no stable identity to dedupe against — the
   // gateway's "agent" RPC treats a repeated idempotencyKey as "already handled" and replays a
@@ -122,5 +130,6 @@ export function buildAgentDispatchParams(params: {
     channel: "slack",
     to: `channel:${slackChannelId}`,
     idempotencyKey,
+    ...(accountId ? { accountId } : {}),
   };
 }
