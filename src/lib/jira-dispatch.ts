@@ -91,6 +91,17 @@ function jiraCommentCredentialsForAgent(
   return { email, token };
 }
 
+// Agents with their own dedicated Slack App/account (channels.slack.accounts.<id> in
+// openclaw.json), as opposed to sharing the default app. Only sage has one so far -- giving
+// every agent one isn't viable on the workspace's Free plan (10-app cap). Every other agent
+// is intentionally absent from this map, not mapped to "default": buildAgentDispatchParams
+// only includes accountId in the RPC params when this lookup returns a value, so an absent
+// entry here means "let the gateway use whatever it already uses" (today, that's the default
+// account) rather than this module hardcoding that assumption.
+const AGENT_SLACK_ACCOUNT_ID: Record<string, string> = {
+  sage: "sage",
+};
+
 // Reverse of jiraAccountIdForAgent: given a Jira accountId (e.g. an issue's
 // current assignee), find which agent slug it belongs to. Used by the
 // webhook's comment relay to route a reply to whichever agent a ticket was
@@ -259,6 +270,7 @@ async function dispatchToAgent(
     message,
     stintStart,
     slackChannelId: channelId,
+    accountId: AGENT_SLACK_ACCOUNT_ID[agentSlug],
   });
 
   await callGateway("agent", params);

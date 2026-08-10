@@ -121,6 +121,57 @@ test("buildAgentDispatchParams enables native Slack delivery when the channel re
   });
 });
 
+test("buildAgentDispatchParams passes accountId through when the agent has its own dedicated Slack account", () => {
+  const { buildAgentDispatchParams } = loadModule();
+  const result = buildAgentDispatchParams({
+    agentSlug: "sage",
+    issueKey: "NEURALOPS-30",
+    message: "New ticket ready for triage: NEURALOPS-30 — Create blog posts",
+    stintStart: 1754593200000,
+    slackChannelId: "C0BCWK5814L",
+    accountId: "sage",
+  });
+  assert.deepEqual(result, {
+    sessionKey: "agent:sage:NEURALOPS-30",
+    message: "New ticket ready for triage: NEURALOPS-30 — Create blog posts",
+    deliver: true,
+    channel: "slack",
+    to: "channel:C0BCWK5814L",
+    idempotencyKey: "NEURALOPS-30:1754593200000",
+    accountId: "sage",
+  });
+});
+
+test("buildAgentDispatchParams omits accountId entirely when the agent shares the default Slack account", () => {
+  const { buildAgentDispatchParams } = loadModule();
+  const result = buildAgentDispatchParams({
+    agentSlug: "main",
+    issueKey: "NEURALOPS-31",
+    message: "New ticket ready for triage: NEURALOPS-31 — Fix comment relay",
+    stintStart: 1754593200000,
+    slackChannelId: "C0BCWK5814L",
+  });
+  assert.equal("accountId" in result, false);
+});
+
+test("buildAgentDispatchParams does not pass accountId when delivery is disabled (no Slack channel resolved)", () => {
+  const { buildAgentDispatchParams } = loadModule();
+  const result = buildAgentDispatchParams({
+    agentSlug: "sage",
+    issueKey: "NEURALOPS-30",
+    message: "New ticket ready for triage: NEURALOPS-30 — Create blog posts",
+    stintStart: 1754593200000,
+    slackChannelId: null,
+    accountId: "sage",
+  });
+  assert.deepEqual(result, {
+    sessionKey: "agent:sage:NEURALOPS-30",
+    message: "New ticket ready for triage: NEURALOPS-30 — Create blog posts",
+    deliver: false,
+    idempotencyKey: "NEURALOPS-30:1754593200000",
+  });
+});
+
 test("buildAgentDispatchParams disables delivery without failing dispatch when the channel can't be resolved", () => {
   const { buildAgentDispatchParams } = loadModule();
   const result = buildAgentDispatchParams({
