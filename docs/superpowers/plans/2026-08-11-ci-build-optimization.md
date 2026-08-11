@@ -60,5 +60,5 @@
 - [x] **Step 1: Run `npm test`, `npm run lint`, and `node_modules/.bin/tsc --noEmit`.**
 - [x] **Step 2: Run `npm run build` and validate runtime Docker packaging locally where supported.**
 - [x] **Step 3: Inspect workflow syntax, `git diff --check`, and the complete focused diff.**
-- [ ] **Step 4: Commit, push `agent/optimize-ci-build`, and open a draft PR against `main`.**
-- [ ] **Step 5: Monitor the PR checks and report the measured build time or any concrete platform blocker.**
+- [x] **Step 4: Commit, push `agent/optimize-ci-build`, and open a draft PR against `main`.**
+- [x] **Step 5: Monitor the PR checks and report the measured build time or any concrete platform blocker.**
