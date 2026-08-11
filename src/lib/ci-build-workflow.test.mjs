@@ -14,7 +14,7 @@ test("builds and packages Next.js natively on ARM with an incremental cache", ()
   assert.match(workflow, /build:\n[\s\S]*?runs-on: ubuntu-24\.04-arm/);
   assert.doesNotMatch(workflow, /docker\/setup-qemu-action/);
   assert.doesNotMatch(workflow, /build:\n[\s\S]*?needs: lint/);
-  assert.match(workflow, /actions\/cache@v4/);
+  assert.match(workflow, /actions\/cache@v6/);
   assert.match(workflow, /path: \.next\/cache/);
   assert.match(workflow, /runner\.arch/);
   assert.match(workflow, /run: npm ci/);
