@@ -1,0 +1,11 @@
+*
+!Dockerfile.runtime
+!.next
+!.next/standalone
+!.next/standalone/**
+!.next/static
+!.next/static/**
+!public
+!public/**
+!data
+!data/**
