@@ -1,6 +1,9 @@
 .git
 .github
 node_modules
+.next
+coverage
+**/*.test.mjs
 *.md
 .env*
 .dockerignore
